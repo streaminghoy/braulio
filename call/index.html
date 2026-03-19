@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>StreamCall 3 (Tally & Stable Fix)</title>
+    
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { background-color: #050505; color: white; font-family: 'Inter', sans-serif; margin: 0; padding: 0; height: 100vh; overflow: hidden; }
+        body.obs-mode { background-color: transparent !important; }
+
+        /* --- LOBBY --- */
+        .lobby-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; background: #0f172a; padding: 20px; text-align: center; }
+        .glass-box { background: rgba(30, 41, 59, 0.8); padding: 40px; border-radius: 16px; border: 1px solid #334155; box-shadow: 0 20px 50px rgba(0,0,0,0.5); max-width: 400px; width: 100%; }
+        input { width: 100%; background: #000; border: 2px solid #334155; color: white; padding: 15px; border-radius: 8px; font-size: 1.2rem; text-align: center; font-weight: bold; margin-bottom: 20px; outline: none; text-transform: uppercase; }
+        
+        .quality-select { width: 100%; background: #000; border: 2px solid #334155; color: white; padding: 12px; border-radius: 8px; font-size: 1rem; text-align: center; font-weight: bold; margin-bottom: 20px; outline: none; cursor: pointer; }
+
+        .btn { width: 100%; padding: 10px; font-weight: 900; font-size: 0.8rem; border-radius: 8px; cursor: pointer; border: none; transition: 0.2s; text-transform: uppercase; }
+        .btn-blue { background: #3b82f6; color: white; margin-bottom: 5px; }
+        .btn-green { background: #10b981; color: black; margin-bottom: 5px; }
+        .btn-red { background: #ef4444; color: white; margin-bottom: 5px; }
+        .btn-gray { background: #334155; color: white; margin-bottom: 5px; border: 1px solid #475569; }
+
+        /* --- OBS --- */
+        .obs-layout { width: 100vw; height: 100vh; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; background: transparent; }
+        .obs-video { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 1; }
+        .obs-status { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; background: rgba(0,0,0,0.85); color: #facc15; padding: 20px 40px; border-radius: 12px; font-family: monospace; font-size: 20px; font-weight: bold; border: 2px solid #facc15; text-align: center; white-space: pre-wrap; }
+        
+        /* --- DIRECTOR MULTI-CAM --- */
+        .director-layout { display: flex; flex-direction: column; height: 100vh; background: #000; }
+        .director-header { background: #0f172a; border-bottom: 1px solid #334155; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .grid-container { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 10px; padding: 10px; overflow-y: auto; align-content: center; }
+        
+        .slot-card { background: #1e293b; border: 2px solid #334155; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; position: relative; min-height: 300px; }
+        .slot-video-area { flex: 1; background: #000; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; border-bottom: 2px solid #334155; }
+        .slot-video { flex: 1; width: 100%; height: 100%; object-fit: contain; position: relative; z-index: 10; }
+        .slot-status { position: absolute; text-transform: uppercase; font-weight: bold; color: #64748b; font-size: 1.2rem; z-index: 1; }
+        
+        /* VU METER */
+        .vu-meter-container { width: 100%; height: 6px; background: #000; border-top: 1px solid #334; position: relative; z-index: 20; }
+        .vu-meter-bar { height: 100%; background: linear-gradient(90deg, #22c55e, #facc15, #ef4444); width: 0%; transition: width 0.05s linear; }
+
+        .slot-controls-area { padding: 10px; display: flex; justify-content: space-between; align-items: center; background: #0f172a; gap: 10px; }
+        .slot-info { display: flex; flex-direction: column; width: 120px; }
+        .slot-title { font-weight: 900; color: #fff; font-size: 1.1rem; }
+        
+        select { background: #000 !important; border: 1px solid #334155 !important; color: #fff !important; padding: 8px; border-radius: 6px; font-size: 0.85rem; outline: none; appearance: auto; }
+
+        .tally-group { display: flex; gap: 5px; flex: 1; }
+        .t-btn { flex: 1; padding: 10px 0; font-size: 0.8rem; font-weight: bold; border-radius: 6px; cursor: pointer; border: 2px solid transparent; background: #1e293b; color: #94a3b8; text-align: center; }
+        .t-btn.active-idle { border-color: #64748b; color: white; }
+        .t-btn.active-prev { background: rgba(34, 197, 94, 0.2); border-color: #22c55e; color: #22c55e; }
+        .t-btn.active-live { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #ef4444; animation: pulseRed 2s infinite; }
+        
+        .link-group { display: flex; flex-direction: column; gap: 5px; width: 130px; }
+
+        /* --- GUEST UI --- */
+        .guest-layout { width: 100vw; height: 100vh; position: relative; background: #111; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .guest-video { width: 100%; height: 100%; object-fit: cover; }
+        .guest-tally-border { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 15px solid transparent; pointer-events: none; transition: border-color 0.3s; z-index: 50; box-sizing: border-box; }
+        .guest-layout.tally-live .guest-tally-border { border-color: #ef4444; box-shadow: inset 0 0 50px rgba(239,68,68,0.8); }
+        .guest-layout.tally-prev .guest-tally-border { border-color: #22c55e; box-shadow: inset 0 0 50px rgba(34,197,94,0.8); }
+        
+        .return-pip { position: absolute; top: 20px; left: 20px; width: 200px; aspect-ratio: 16/9; background: #000; border: 2px solid #475569; border-radius: 12px; overflow: hidden; z-index: 80; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+        .return-pip.active { opacity: 1; pointer-events: auto; }
+        .return-pip video { width: 100%; height: 100%; object-fit: cover; }
+        .pip-label { position: absolute; bottom: 4px; left: 4px; background: rgba(0,0,0,0.8); color: white; font-size: 10px; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
+
+        .guest-overlay { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); padding: 12px 25px; border-radius: 50px; display: flex; align-items: center; gap: 15px; z-index: 100; border: 1px solid #333; }
+        .mic-btn { width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.2rem; transition: 0.2s; background: #334155; color: white; }
+        .mic-btn.off { background: #ef4444; }
+
+        .big-tally-text { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); font-size: 1.5rem; font-weight: 900; padding: 5px 20px; border-radius: 10px; z-index: 100; text-transform: uppercase; display: none; }
+        .guest-layout.tally-live .big-tally-text { display: block; background: #ef4444; color: white; }
+        .guest-layout.tally-prev .big-tally-text { display: block; background: #22c55e; color: black; }
+
+        @keyframes pulseRed { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const PEER_CONFIG = { 
+            config: { 
+                'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]
+            } 
+        };
+        const MQTT_BROKER = 'wss://broker.emqx.io:8084/mqtt';
+
+        let sharedAudioCtx = null;
+        const getAudioContext = () => {
+            if (!sharedAudioCtx) sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (sharedAudioCtx.state === 'suspended') sharedAudioCtx.resume();
+            return sharedAudioCtx;
+        };
+
+        const VideoPlayer = ({ stream, muted, className }) => {
+            const videoRef = useRef(null);
+            useEffect(() => {
+                if (videoRef.current && stream) {
+                    videoRef.current.srcObject = stream;
+                    videoRef.current.play().catch(e => console.log("Play interceptado"));
+                }
+            }, [stream]);
+            return <video ref={videoRef} className={className} autoPlay playsInline muted={muted}></video>;
+        };
+
+        const VUMeter = ({ stream }) => {
+            const barRef = useRef(null);
+            
+            useEffect(() => {
+                if (!stream || stream.getAudioTracks().length === 0) return;
+                let anim;
+                let source;
+                try {
+                    const ctx = getAudioContext();
+                    const analyser = ctx.createAnalyser();
+                    source = ctx.createMediaStreamSource(stream);
+                    source.connect(analyser);
+                    const data = new Uint8Array(analyser.frequencyBinCount);
+                    
+                    const tick = () => {
+                        if (!stream.active) return;
+                        analyser.getByteFrequencyData(data);
+                        let sum = 0;
+                        for(let i = 0; i < data.length; i++) sum += data[i];
+                        const level = Math.min((sum / data.length) * 2.5, 100);
+                        if (barRef.current) barRef.current.style.width = level + '%';
+                        anim = requestAnimationFrame(tick);
+                    };
+                    tick();
+                } catch(e) {}
+
+                return () => { 
+                    if (anim) cancelAnimationFrame(anim); 
+                    if (source) source.disconnect();
+                };
+            }, [stream]);
+
+            return (
+                <div className="vu-meter-container">
+                    <div ref={barRef} className="vu-meter-bar"></div>
+                </div>
+            );
+        };
+
+        // --- DIRECTOR MULTI-CAM (3 CANALES) ---
+        const DirectorView = ({ roomName }) => {
+            const [slots, setSlots] = useState({
+                1: { connected: false, tally: 'idle', stream: null },
+                2: { connected: false, tally: 'idle', stream: null },
+                3: { connected: false, tally: 'idle', stream: null }
+            });
+            const [audioDevices, setAudioDevices] = useState([]);
+            const [selectedAudio, setSelectedAudio] = useState('');
+            const [talkbackActive, setTalkbackActive] = useState(false);
+            const talkbackRef = useRef(false);
+
+            const peer = useRef(null);
+            const mqttClient = useRef(null);
+            const returnStreamRef = useRef(null);
+
+            useEffect(() => {
+                mqttClient.current = mqtt.connect(MQTT_BROKER);
+                
+                navigator.mediaDevices.enumerateDevices().then(devs => {
+                    const audios = devs.filter(d => d.kind === 'audioinput');
+                    setAudioDevices(audios);
+                    if (audios.length > 0) setSelectedAudio(audios[0].deviceId);
+                });
+
+                const myId = `sc_dir_${roomName.toUpperCase()}`;
+                peer.current = new Peer(myId, PEER_CONFIG);
+
+                peer.current.on('call', (call) => {
+                    const match = call.peer.match(/_(\d+)$/);
+                    if (match) {
+                        const slotId = parseInt(match[1]);
+                        if (slotId >= 1 && slotId <= 3) {
+                            call.answer(); 
+                            call.on('stream', (stream) => {
+                                setSlots(prev => ({ ...prev, [slotId]: { ...prev[slotId], connected: true, stream: stream } }));
+                                if (talkbackRef.current && returnStreamRef.current) {
+                                    setTimeout(() => { peer.current.call(`sc_guest_${roomName.toUpperCase()}_${slotId}`, returnStreamRef.current); }, 1500);
+                                }
+                            });
+                            call.on('close', () => {
+                                setSlots(prev => ({ ...prev, [slotId]: { ...prev[slotId], connected: false, stream: null } }));
+                            });
+                        }
+                    }
+                });
+
+                return () => { peer.current?.destroy(); mqttClient.current?.end(); };
+            }, [roomName]);
+
+            const handleTally = (slotId, state) => {
+                setSlots(prev => ({ ...prev, [slotId]: { ...prev[slotId], tally: state } }));
+                mqttClient.current?.publish(`sc_tally/${roomName.toUpperCase()}/${slotId}`, JSON.stringify({ state: state }), { retain: true });
+            };
+
+            const toggleReturnAll = async () => {
+                if (talkbackActive) {
+                    returnStreamRef.current?.getTracks().forEach(t => t.stop());
+                    setTalkbackActive(false);
+                    talkbackRef.current = false;
+                } else {
+                    try {
+                        const s = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: selectedAudio }, video: true });
+                        returnStreamRef.current = s;
+                        setTalkbackActive(true);
+                        talkbackRef.current = true;
+                        
+                        let delay = 0;
+                        [1, 2, 3].forEach(slotId => {
+                            if (slots[slotId].connected) {
+                                setTimeout(() => { peer.current.call(`sc_guest_${roomName.toUpperCase()}_${slotId}`, s); }, delay);
+                                delay += 300;
+                            }
+                        });
+                    } catch (e) { alert("Error retorno general"); }
+                }
+            };
+
+            const copyLink = (mode, slotId) => {
+                const url = `${window.location.href.split('?')[0]}?mode=${mode}&room=${roomName}&slot=${slotId}`;
+                navigator.clipboard.writeText(url); 
+                alert(`Enlace de ${mode.toUpperCase()} (Móvil ${slotId}) copiado.`);
+            };
+
+            return (
+                <div className="director-layout">
+                    <div className="director-header">
+                        <div>
+                            <h2 className="text-xl font-black text-blue-400 uppercase tracking-tighter">StreamCall PRO (3 CANALES)</h2>
+                            <span className="text-gray-400 text-sm font-bold">SALA: {roomName.toUpperCase()}</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <select value={selectedAudio} onChange={e => setSelectedAudio(e.target.value)} className="w-48">
+                                {audioDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || 'Mic'}</option>)}
+                            </select>
+                            <button className={`btn ${talkbackActive ? 'btn-red' : 'btn-blue'} !mb-0 !w-auto !px-6`} onClick={toggleReturnAll}>
+                                {talkbackActive ? '🔴 CORTAR IFB GLOBAL' : '▶️ IFB GLOBAL'}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="grid-container">
+                        {[1, 2, 3].map(slotId => (
+                            <div key={slotId} className={`slot-card ${slots[slotId].tally === 'live' ? 'border-red-500' : slots[slotId].tally === 'prev' ? 'border-green-500' : ''}`}>
+                                <div className="slot-video-area">
+                                    {slots[slotId].stream && <VideoPlayer stream={slots[slotId].stream} muted={true} className="slot-video" />}
+                                    {!slots[slotId].connected && <div className="slot-status">ESPERANDO MÓVIL {slotId}...</div>}
+                                </div>
+                                {slots[slotId].connected && <VUMeter stream={slots[slotId].stream} />}
+                                <div className="slot-controls-area">
+                                    <div className="slot-info">
+                                        <span className="slot-title">MÓVIL {slotId}</span>
+                                        <span className={`text-xs font-bold ${slots[slotId].connected ? 'text-green-400' : 'text-red-400'}`}>
+                                            {slots[slotId].connected ? 'ONLINE' : 'OFFLINE'}
+                                        </span>
+                                    </div>
+                                    <div className="tally-group">
+                                        <button className={`t-btn ${slots[slotId].tally==='idle'?'active-idle':''}`} onClick={()=>handleTally(slotId, 'idle')}>OFF</button>
+                                        <button className={`t-btn ${slots[slotId].tally==='prev'?'active-prev':''}`} onClick={()=>handleTally(slotId, 'prev')}>PREV</button>
+                                        <button className={`t-btn ${slots[slotId].tally==='live'?'active-live':''}`} onClick={()=>handleTally(slotId, 'live')}>AIRE</button>
+                                    </div>
+                                    <div className="link-group">
+                                        <button className="btn btn-green !py-1" onClick={()=>copyLink('obs', slotId)}>COPY OBS</button>
+                                        <button className="btn btn-blue !py-1" onClick={()=>copyLink('guest', slotId)}>COPY MÓVIL</button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        // --- OBS RENDERER ---
+        const ObsView = ({ roomName, slotId }) => {
+            const [status, setStatus] = useState(`INICIANDO OBS...`);
+            const [stream, setStream] = useState(null);
+            const peer = useRef(null);
+            const videoRef = useRef(null);
+
+            useEffect(() => {
+                let pingInterval;
+                const baseId = roomName.toUpperCase();
+                const myId = `sc_obs_${baseId}_${slotId}`;
+                const guestId = `sc_guest_${baseId}_${slotId}`;
+                
+                peer.current = new Peer(myId, PEER_CONFIG);
+
+                peer.current.on('open', () => {
+                    setStatus(`Buscando al MÓVIL ${slotId} en la red...`);
+                    
+                    pingInterval = setInterval(() => {
+                        if (!stream) {
+                            const conn = peer.current.connect(guestId, { reliable: false });
+                            conn.on('open', () => {
+                                conn.send('WAKE_UP_OBS');
+                                setTimeout(() => conn.close(), 500);
+                            });
+                        }
+                    }, 3000);
+                });
+
+                peer.current.on('call', (call) => {
+                    if (pingInterval) clearInterval(pingInterval);
+                    setStatus('RECIBIENDO SEÑAL...');
+                    
+                    call.answer(); 
+                    call.on('stream', (s) => {
+                        setStream(s);
+                        setStatus('');
+                    });
+                    call.on('close', () => {
+                        setStream(null);
+                        setStatus(`MÓVIL ${slotId} DESCONECTADO`);
+                    });
+                });
+
+                peer.current.on('error', (err) => {
+                    setStatus(`ESPERANDO MÓVIL ${slotId}...`);
+                });
+
+                return () => { 
+                    if (pingInterval) clearInterval(pingInterval);
+                    peer.current?.destroy(); 
+                };
+            }, [roomName, slotId]);
+
+            useEffect(() => {
+                if (stream && videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    videoRef.current.play().catch(e => console.log("AutoPlay OBS bloqueado"));
+                }
+            }, [stream]);
+
+            return (
+                <div className="obs-layout">
+                    {stream && (
+                        <video 
+                            ref={videoRef} 
+                            className="obs-video" 
+                            autoPlay 
+                            playsInline 
+                            muted={false} 
+                        ></video>
+                    )}
+                    {!stream && <div className="obs-status">{status}</div>}
+                </div>
+            );
+        };
+
+        // --- INVITADO (GUEST) ---
+        const GuestView = ({ roomName, slotId }) => {
+            const [joined, setJoined] = useState(false);
+            const [quality, setQuality] = useState('720');
+            const [tally, setTally] = useState('idle');
+            const [micMuted, setMicMuted] = useState(false);
+            const [camOff, setCamOff] = useState(false);
+            const [returnStream, setReturnStream] = useState(null);
+            const [facingMode, setFacingMode] = useState('user');
+            
+            const peer = useRef(null);
+            const mqttClient = useRef(null);
+            const localStream = useRef(null);
+            const [myStreamState, setMyStreamState] = useState(null);
+
+            const switchCamera = async () => {
+                const nextMode = facingMode === 'user' ? 'environment' : 'user';
+                setFacingMode(nextMode);
+                try {
+                    const res = { '360': [640,360], '720': [1280,720], '1080': [1920,1080] };
+                    const newVideoState = await navigator.mediaDevices.getUserMedia({ 
+                        video: { width: { ideal: res[quality][0] }, height: { ideal: res[quality][1] }, facingMode: nextMode }
+                    });
+                    const newVideoTrack = newVideoState.getVideoTracks()[0];
+                    
+                    if (peer.current) {
+                        Object.values(peer.current.connections).forEach(connArray => {
+                            connArray.forEach(connection => {
+                                if (connection.peerConnection) {
+                                    const videoSender = connection.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                                    if (videoSender) videoSender.replaceTrack(newVideoTrack);
+                                }
+                            });
+                        });
+                    }
+
+                    if (localStream.current) {
+                        const oldVideoTrack = localStream.current.getVideoTracks()[0];
+                        localStream.current.removeTrack(oldVideoTrack);
+                        localStream.current.addTrack(newVideoTrack);
+                        setMyStreamState(new MediaStream(localStream.current.getTracks()));
+                        if (oldVideoTrack) oldVideoTrack.stop();
+                    }
+                } catch (e) { alert("Error al girar la cámara"); }
+            };
+
+            useEffect(() => {
+                if (!joined) return;
+                
+                const mq = mqtt.connect(MQTT_BROKER);
+                mqttClient.current = mq;
+                mq.on('connect', () => { mq.subscribe(`sc_tally/${roomName.toUpperCase()}/${slotId}`); });
+                
+                mq.on('message', (t, msg) => {
+                    const data = msg.toString();
+                    // FIX CLAVE DE TALLY: La palabra exacta para coincidir
+                    if (t.includes('tally')) setTally(JSON.parse(data).state);
+                });
+                
+                const init = async () => {
+                    try {
+                        const res = { '360': [640,360], '720': [1280,720], '1080': [1920,1080] };
+                        
+                        const s = await navigator.mediaDevices.getUserMedia({ 
+                            video: { width: { ideal: res[quality][0] }, height: { ideal: res[quality][1] }, facingMode: facingMode }, 
+                            audio: { echoCancellation: true, noiseSuppression: true } 
+                        });
+                        
+                        localStream.current = s;
+                        setMyStreamState(s);
+                        
+                        const baseId = roomName.toUpperCase();
+                        peer.current = new Peer(`sc_guest_${baseId}_${slotId}`, PEER_CONFIG);
+                        
+                        peer.current.on('open', () => {
+                            setTimeout(() => { peer.current.call(`sc_dir_${baseId}`, localStream.current); }, 300);
+                        });
+
+                        peer.current.on('connection', (conn) => {
+                            conn.on('data', (data) => {
+                                if (data === 'WAKE_UP_OBS' && localStream.current) {
+                                    peer.current.call(`sc_obs_${baseId}_${slotId}`, localStream.current);
+                                }
+                            });
+                        });
+
+                        peer.current.on('call', (c) => {
+                            c.answer(); 
+                            c.on('stream', (rem) => { setReturnStream(rem); });
+                        });
+                    } catch (e) { alert("Error al acceder a cámara/micrófono"); }
+                };
+                init();
+                return () => { peer.current?.destroy(); mq.end(); };
+            }, [joined]);
+
+            const toggleMic = () => { if (localStream.current) { const t = localStream.current.getAudioTracks()[0]; t.enabled = !t.enabled; setMicMuted(!t.enabled); } };
+            const toggleCam = () => { if (localStream.current) { const t = localStream.current.getVideoTracks()[0]; t.enabled = !t.enabled; setCamOff(!t.enabled); } };
+
+            if (!joined) return (
+                <div className="lobby-container"><div className="glass-box">
+                    <h2 className="text-xl font-black mb-2 text-white uppercase tracking-widest">SALA: {roomName}</h2>
+                    <h3 className="text-2xl font-black mb-4 text-blue-400 uppercase tracking-widest">MÓVIL {slotId}</h3>
+                    <select className="quality-select" value={quality} onChange={e => setQuality(e.target.value)}>
+                        <option value="360">360p (BAJA)</option>
+                        <option value="720">720p (MEDIA)</option>
+                        <option value="1080">1080p (ALTA)</option>
+                    </select>
+                    <button className="btn btn-blue w-full mt-2" onClick={() => setJoined(true)}>ENTRAR AL VIVO</button>
+                </div></div>
+            );
+
+            return (
+                <div className={`guest-layout tally-${tally}`}>
+                    <div className="guest-tally-border"></div>
+                    <div className="big-tally-text">{tally === 'live' ? 'AL AIRE' : tally === 'prev' ? 'PREVENIDO' : ''}</div>
+                    
+                    <div className={`return-pip ${returnStream ? 'active' : ''}`}>
+                        {returnStream && <VideoPlayer stream={returnStream} muted={false} />}
+                        <div className="pip-label">RETORNO DIRECTOR</div>
+                    </div>
+                    
+                    {myStreamState && (
+                        <VideoPlayer stream={myStreamState} muted={true} className="guest-video" style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none', objectFit: 'cover' }} />
+                    )}
+                    
+                    <div className="guest-overlay">
+                        <div className="text-[10px] font-bold text-gray-400 uppercase mr-2">CH {slotId}</div>
+                        <div className={`mic-btn ${micMuted?'off':'on'}`} onClick={toggleMic}>{micMuted ? '🔇' : '🎤'}</div>
+                        <div className={`mic-btn ${camOff?'off':'on'}`} onClick={toggleCam}>{camOff ? '🚫' : '📷'}</div>
+                        <div className="mic-btn" style={{ background: '#3b82f6' }} onClick={switchCamera}>🔄</div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- APP ROUTER ---
+        const App = () => {
+            const [appState, setAppState] = useState({ mode: null, room: null, slot: '1' });
+
+            useEffect(() => {
+                const params = new URLSearchParams(window.location.search);
+                const m = params.get('mode'); 
+                const r = params.get('room');
+                const s = params.get('slot') || '1';
+                
+                if (m && r) { 
+                    if (m === 'obs') document.body.classList.add('obs-mode'); 
+                    setAppState({ mode: m, room: r, slot: s });
+                } else {
+                    setAppState({ mode: 'lobby', room: Math.random().toString(36).substring(2, 6).toUpperCase(), slot: '1' });
+                }
+            }, []);
+
+            if (appState.mode === 'director') return <DirectorView roomName={appState.room} />;
+            if (appState.mode === 'obs') return <ObsView roomName={appState.room} slotId={appState.slot} />;
+            if (appState.mode === 'guest') return <GuestView roomName={appState.room} slotId={appState.slot} />;
+            
+            if (appState.mode === 'lobby') {
+                return (
+                    <div className="lobby-container"><div className="glass-box">
+                        <h1 className="text-3xl font-black mb-6 uppercase text-blue-500 tracking-tighter">StreamCall PRO (3 CANALES)</h1>
+                        <input value={appState.room} onChange={(e) => setAppState({...appState, room: e.target.value.toUpperCase()})} placeholder="NOMBRE SALA" />
+                        <button className="btn btn-blue w-full py-4 text-lg" onClick={() => window.location.href=`?mode=director&room=${appState.room}`}>ABRIR DASHBOARD DIRECTOR</button>
+                    </div></div>
+                );
+            }
+            return null;
+        };
+        
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
