@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Retorno Pro P2P - Reconexión Automática</title>
+    <title>Retorno Pro P2P - Estable</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -21,8 +21,8 @@
         .broadcast-view { display: none; height: 100vh; flex-direction: column; background: #0a0a0a; }
         .broadcast-view.active { display: flex; }
         
-        header { background: #111; padding: 12px 15px; border-bottom: 2px solid #ff6b00; flex-shrink: 0; }
-        .title { color: #ff6b00; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        header { background: #111; padding: 12px 15px; border-bottom: 2px solid #ff6b00; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; }
+        .title { color: #ff6b00; font-size: 18px; font-weight: bold; }
         
         .status-bar { background: #1a1a1a; padding: 8px 15px; font-size: 12px; display: flex; gap: 15px; align-items: center; border-bottom: 1px solid #333; flex-shrink: 0; }
         .dot { width: 8px; height: 8px; border-radius: 50%; background: #333; display: inline-block; margin-right: 5px; }
@@ -45,6 +45,7 @@
         button.primary { background: #ff6b00; color: #000; }
         button:disabled { opacity: 0.4; cursor: not-allowed; }
         button.active-source { border-color: #ff6b00; background: #2a1f0f; }
+        button.reconnect-btn { background: #0088ff; color: #fff; border-color: #0088ff; font-size: 11px; padding: 6px 12px; }
         
         .quality-display { background: #1a1a1a; padding: 10px; border-radius: 8px; font-size: 13px; color: #888; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
         .quality-display strong { color: #ff6b00; }
@@ -57,24 +58,24 @@
         .reporter-item { background: #0f0f0f; border: 1px solid #2a2a2a; padding: 12px; border-radius: 8px; position: relative; word-break: break-all; }
         .reporter-item.active { border-color: #00ff00; background: #0a1a0a; }
         .reporter-item.error { border-color: #ff0000; background: #1a0000; }
-        .reporter-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px; }
+        .reporter-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; }
         .reporter-id { font-family: monospace; color: #00ff00; font-weight: bold; font-size: 16px; flex: 1; }
         .badge { padding: 3px 8px; border-radius: 4px; background: #333; font-size: 10px; font-weight: bold; white-space: nowrap; }
         .badge.active { background: #00ff00; color: #000; }
         .badge.error { background: #ff0000; color: #fff; }
-        .badge.waiting { background: #ffff00; color: #000; }
+        .badge.disconnected { background: #666; color: #ccc; }
         
         .url-box { background: #1a1a1a; padding: 10px; border-radius: 6px; margin: 8px 0; border: 1px solid #333; display: flex; flex-direction: column; gap: 8px; }
         .url-text { font-family: monospace; font-size: 11px; color: #888; word-break: break-all; line-height: 1.4; }
         .url-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-        .btn-copy { background: #ff6b00; color: #000; border: none; padding: 8px 16px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+        .btn-copy { background: #ff6b00; color: #000; border: none; padding: 8px 16px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; }
         .btn-copy.copied { background: #00ff00; }
         .btn-test { background: #333; color: #fff; border: 1px solid #555; padding: 8px 12px; border-radius: 6px; font-size: 12px; text-decoration: none; display: inline-block; }
-        .btn-remove { background: #ff0000; color: #fff; border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .btn-remove { background: #ff0000; color: #fff; border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
         
         .empty-state { text-align: center; padding: 40px 20px; color: #555; font-style: italic; }
         
-        /* RECEPTOR - OPTIMIZADO RECONEXIÓN */
+        /* RECEPTOR */
         .receiver-view { display: none; width: 100vw; height: 100vh; background: #000; position: relative; }
         .receiver-view.active { display: block; }
         
@@ -86,41 +87,27 @@
             background: rgba(0,0,0,0.95); z-index: 10; transition: opacity 0.3s;
         }
         .overlay.hidden { opacity: 0; pointer-events: none; }
-        .overlay.partial { background: rgba(0,0,0,0.7); } /* Para mostrar video debajo pero con controles encima */
+        .overlay.partial { background: rgba(0,0,0,0.8); }
         
         .spinner { width: 50px; height: 50px; border: 4px solid #222; border-top-color: #ff6b00; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
         @keyframes spin { to { transform: rotate(360deg); } }
         
         .status-text { color: #fff; font-size: 22px; font-weight: 600; margin-bottom: 10px; text-align: center; }
         .status-detail { color: #888; font-size: 14px; text-align: center; max-width: 80%; line-height: 1.4; margin-bottom: 20px; }
-        .retry-info { color: #666; font-size: 12px; margin-top: 10px; font-family: monospace; }
         
         .top-controls { position: absolute; top: 0; left: 0; width: 100%; padding: 15px 20px; display: flex; justify-content: space-between; align-items: flex-start; z-index: 5; background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent); pointer-events: none; }
         .top-controls > * { pointer-events: auto; }
         .info-box { background: rgba(0,0,0,0.6); backdrop-filter: blur(10px); padding: 10px 15px; border-radius: 8px; border: 1px solid rgba(255,107,0,0.3); font-size: 12px; max-width: 200px; }
         .info-box .label { color: #ff6b00; font-size: 10px; margin-bottom: 2px; }
         .info-box .value { color: #fff; font-weight: bold; font-family: monospace; font-size: 14px; }
-        .info-box .sub { color: #666; font-size: 10px; margin-top: 4px; }
-        
         .control-buttons { display: flex; gap: 10px; }
         .icon-btn { width: 44px; height: 44px; border-radius: 50%; background: rgba(255,107,0,0.9); border: none; color: #000; font-size: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
         
-        /* Estado reconectando - más sutil */
-        .reconnecting-bar {
-            position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
-            background: rgba(255,107,0,0.9); color: #000; padding: 8px 16px; border-radius: 20px;
-            font-weight: bold; font-size: 13px; display: none; align-items: center; gap: 8px;
-            z-index: 6; box-shadow: 0 2px 10px rgba(0,0,0,0.5);
-        }
-        .reconnecting-bar.visible { display: flex; }
-        .mini-spinner { width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.3); border-top-color: #000; border-radius: 50%; animation: spin 1s linear infinite; }
-        
-        .big-btn { 
-            background: #ff6b00; color: #000; border: none; padding: 12px 24px; 
-            border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; 
-            margin-top: 15px; 
-        }
+        .big-btn { background: #ff6b00; color: #000; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; margin: 5px; }
         .big-btn.secondary { background: #333; color: #fff; }
+        
+        .waiting-indicator { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); padding: 20px; border-radius: 12px; text-align: center; display: none; z-index: 8; }
+        .waiting-indicator.visible { display: block; }
     </style>
 </head>
 <body>
@@ -134,7 +121,7 @@
     <!-- EMISOR -->
     <div id="broadcastView" class="broadcast-view">
         <header>
-            <div class="title">📡 RETORNO P2P <span style="font-size:12px;color:#666;">v4.0</span></div>
+            <div class="title">📡 RETORNO P2P <span style="font-size:12px;color:#666;">v4.1 ESTABLE</span></div>
             <button onclick="toggleDebug()" style="background:#222;color:#ff6b00;border:1px solid #ff6b00;padding:5px 10px;border-radius:4px;font-size:11px;">DEBUG</button>
         </header>
         
@@ -152,12 +139,12 @@
             <div class="card">
                 <div class="preview-box">
                     <video id="localVideo" autoplay muted playsinline></video>
-                    <div class="preview-label">SEÑAL LOCAL</div>
+                    <div class="preview-label">SEÑAL LOCAL (NUNCA SE DETIENE)</div>
                     <div id="resBadge" class="resolution-badge" style="display:none;">--</div>
                 </div>
                 
                 <div class="quality-display">
-                    <span>Calidad: <strong id="qualityText">360p</strong> (~0.5 Mbps)</span>
+                    <span>Calidad: <strong id="qualityText">360p</strong></span>
                     <button onclick="changeQuality()" style="padding:6px 12px;font-size:12px;">Cambiar</button>
                 </div>
                 
@@ -165,6 +152,10 @@
                     <button onclick="startSource('vmix')" id="btnVmix">🎥 vMix/OBS</button>
                     <button onclick="startSource('screen')" id="btnScreen">🖥️ Pantalla</button>
                     <button onclick="startSource('camera')" id="btnCamera">📷 WebCam</button>
+                </div>
+                
+                <div class="hint" style="background:#1a0f00;border-left-color:#ff6b00;">
+                    <strong>IMPORTANTE:</strong> Una vez iniciada la fuente (OBS), no se detiene al conectar/desconectar reporteros. Si un reportero pierde señal, usa el botón azul "↻ Reconectar" manualmente cuando esté listo.
                 </div>
             </div>
             
@@ -183,28 +174,30 @@
         </div>
     </div>
 
-    <!-- RECEPTOR CON RECONEXIÓN -->
+    <!-- RECEPTOR -->
     <div id="receiverView" class="receiver-view">
         <div id="overlay" class="overlay">
             <div class="spinner" id="mainSpinner"></div>
             <div class="status-text" id="mainStatus">Iniciando...</div>
-            <div class="status-detail" id="subStatus">Conectando al servidor P2P</div>
-            <div class="retry-info" id="retryInfo"></div>
-            <button id="manualReconnectBtn" class="big-btn" style="display:none;" onclick="manualReconnect()">🔄 Reconectar Ahora</button>
+            <div class="status-detail" id="subStatus">Conectando al servidor</div>
+            <div style="margin-top:20px;display:flex;flex-direction:column;gap:10px;align-items:center;">
+                <button id="retryBtn" class="big-btn" style="display:none;" onclick="manualRetry()">🔄 Intentar Reconectar</button>
+                <button class="big-btn secondary" onclick="toggleDebug()">🐛 Ver Debug</button>
+            </div>
         </div>
         
         <video id="remoteVideo" autoplay playsinline></video>
         
-        <div id="reconnectingBar" class="reconnecting-bar">
-            <div class="mini-spinner"></div>
-            <span>Reconectando...</span>
+        <div id="waitingReconnect" class="waiting-indicator">
+            <div class="spinner" style="width:30px;height:30px;margin-bottom:10px;"></div>
+            <div style="color:#fff;font-size:14px;">Esperando señal...</div>
         </div>
         
         <div class="top-controls">
             <div class="info-box">
                 <div class="label">SEÑAL DE RETORNO</div>
                 <div class="value" id="infoId">--</div>
-                <div class="sub" id="infoStatus">Iniciando...</div>
+                <div style="font-size:10px;color:#666;margin-top:4px;" id="infoStatus">Iniciando...</div>
             </div>
             <div class="control-buttons">
                 <button class="icon-btn" onclick="toggleDebug()">🐛</button>
@@ -228,7 +221,6 @@
             document.getElementById('debugPanel').classList.toggle('active');
         }
         
-        // 3 toques para debug en receptor
         let tapCount = 0, lastTap = 0;
         document.addEventListener('click', (e) => {
             if (document.getElementById('receiverView').classList.contains('active')) {
@@ -290,13 +282,19 @@
             
             peer.on('error', (err) => {
                 log('✗ ' + err.type, 'err');
-                if (err.type === 'network') setTimeout(() => location.reload(), 5000);
             });
         }
         
         async function startSource(type) {
+            // SIEMPRE mantener el stream anterior si existe, solo reiniciar si el usuario cambia fuente
+            if (localStream && currentSourceType === type) {
+                log('Fuente ya activa, no se reinicia');
+                return;
+            }
+            
             try {
-                if (localStream) {
+                // Solo detener si cambiamos de tipo de fuente
+                if (localStream && currentSourceType !== type) {
                     localStream.getTracks().forEach(t => t.stop());
                     localStream = null;
                 }
@@ -323,8 +321,9 @@
                     } catch(e) { }
                     
                     track.onended = () => {
-                        log('Pantalla detenida');
+                        log('Pantalla detenida por usuario');
                         localStream = null;
+                        currentSourceType = null;
                         document.getElementById('localVideo').srcObject = null;
                         document.querySelectorAll('.controls button').forEach(b => b.classList.remove('active-source'));
                     };
@@ -343,7 +342,9 @@
                 document.getElementById('resBadge').style.display = 'block';
                 
                 log(`✓ ${type}: ${settings.width}x${settings.height}`, 'ok');
-                reconnectAll();
+                
+                // NO reconectar automáticamente a todos - dejar que el usuario decida
+                // o marcar como "disconnected" para reconexión manual
                 
             } catch (err) {
                 log('✗ Error: ' + err.message, 'err');
@@ -358,7 +359,15 @@
             const cfg = qualityConfig[currentQuality];
             document.getElementById('qualityText').textContent = `${currentQuality} (~${cfg.bitrate} Mbps)`;
             log('Calidad: ' + currentQuality);
-            if (currentSourceType) startSource(currentSourceType);
+            
+            // Si hay fuente activa, reiniciar para aplicar calidad
+            if (currentSourceType) {
+                // Guardar referencia temporal
+                const oldType = currentSourceType;
+                // Permitir reinicio forzado
+                currentSourceType = null;
+                startSource(oldType);
+            }
         }
         
         function addReporter() {
@@ -368,25 +377,30 @@
             
             const url = window.location.origin + window.location.pathname + '?id=' + id;
             
-            connections.set(id, { id, url, call: null, status: 'standby' });
+            connections.set(id, { 
+                id, 
+                url, 
+                call: null, 
+                status: 'standby',
+                lastConnect: null
+            });
+            
             renderReporters();
             document.getElementById('newId').value = '';
             
-            if (localStream) connectToReporter(id);
-            
-            setTimeout(() => {
-                const list = document.getElementById('reporterList');
-                list.scrollTop = list.scrollHeight;
-            }, 100);
+            // Solo conectar automáticamente si hay stream Y el usuario no ha desconectado manualmente antes
+            if (localStream) {
+                connectToReporter(id);
+            }
         }
         
         async function copyToClipboard(text, btn) {
             try {
                 await navigator.clipboard.writeText(text);
-                btn.innerHTML = '✓ ¡Copiado!';
+                btn.textContent = '✓ Copiado';
                 btn.classList.add('copied');
                 setTimeout(() => {
-                    btn.innerHTML = '📋 Copiar';
+                    btn.textContent = '📋 Copiar';
                     btn.classList.remove('copied');
                 }, 2000);
             } catch (err) {
@@ -404,47 +418,98 @@
         function connectToReporter(id) {
             if (!localStream || !peer) return;
             const conn = connections.get(id);
-            if (!conn || conn.call) return;
+            if (!conn) return;
+            
+            // Si ya hay una llamada activa, no crear otra (evitar duplicados)
+            if (conn.call && conn.status === 'active') {
+                log(`${id}: Ya conectado`);
+                return;
+            }
+            
+            // Cerrar llamada anterior si existe (para reconexión limpia)
+            if (conn.call) {
+                try { conn.call.close(); } catch(e){}
+                conn.call = null;
+            }
             
             conn.status = 'connecting';
             renderReporters();
             
             try {
+                log(`Llamando a ${id}...`);
                 const call = peer.call(id, localStream);
-                if (!call) { conn.status = 'error'; renderReporters(); return; }
+                
+                if (!call) {
+                    conn.status = 'error';
+                    renderReporters();
+                    return;
+                }
                 
                 conn.call = call;
+                conn.lastConnect = Date.now();
                 
-                let iceInterval = setInterval(() => {
+                // Monitoreo ICE
+                const checkIce = setInterval(() => {
                     if (!call.peerConnection) return;
                     const state = call.peerConnection.iceConnectionState;
+                    
                     if (state === 'connected' || state === 'completed') {
-                        clearInterval(iceInterval);
+                        clearInterval(checkIce);
                         conn.status = 'active';
                         renderReporters();
                         log(`${id}: Conectado`, 'ok');
-                    } else if (state === 'failed') {
-                        clearInterval(iceInterval);
-                        conn.status = 'error';
-                        renderReporters();
+                    } else if (state === 'failed' || state === 'disconnected') {
+                        clearInterval(checkIce);
+                        if (conn.status !== 'disconnected') { // Si no fue manual
+                            conn.status = 'disconnected';
+                            renderReporters();
+                        }
                     }
                 }, 1000);
                 
                 call.on('close', () => {
+                    log(`${id}: Cerrado`);
                     conn.call = null;
-                    conn.status = 'disconnected';
-                    renderReporters();
-                    if (localStream) setTimeout(() => connectToReporter(id), 3000);
+                    if (conn.status === 'active' || conn.status === 'connecting') {
+                        conn.status = 'disconnected';
+                        renderReporters();
+                    }
                 });
                 
+                call.on('error', (err) => {
+                    log(`${id}: Error - ${err.message}`, 'err');
+                    conn.call = null;
+                    conn.status = 'error';
+                    renderReporters();
+                });
+                
+                // Timeout de 15 segundos
+                setTimeout(() => {
+                    if (conn.status === 'connecting') {
+                        conn.status = 'error';
+                        if (conn.call) {
+                            try { conn.call.close(); } catch(e){}
+                            conn.call = null;
+                        }
+                        renderReporters();
+                    }
+                }, 15000);
+                
             } catch (err) {
+                log(`✗ ${err.message}`, 'err');
                 conn.status = 'error';
                 renderReporters();
             }
         }
         
-        function reconnectAll() {
-            connections.forEach((conn, id) => { if (!conn.call) connectToReporter(id); });
+        function disconnectReporter(id) {
+            const conn = connections.get(id);
+            if (conn?.call) {
+                conn.call.close();
+                conn.call = null;
+            }
+            conn.status = 'disconnected';
+            renderReporters();
         }
         
         function removeReporter(id) {
@@ -465,7 +530,7 @@
             list.innerHTML = '';
             connections.forEach(conn => {
                 const div = document.createElement('div');
-                div.className = 'reporter-item ' + conn.status;
+                div.className = 'reporter-item ' + (conn.status === 'active' ? 'active' : conn.status === 'error' ? 'error' : '');
                 div.innerHTML = `
                     <div class="reporter-header">
                         <div class="reporter-id">${conn.id}</div>
@@ -476,6 +541,10 @@
                         <div class="url-text">${conn.url}</div>
                         <div class="url-actions">
                             <button class="btn-copy" onclick="copyToClipboard('${conn.url}', this)">📋 Copiar</button>
+                            ${conn.status === 'disconnected' || conn.status === 'error' ? 
+                                `<button class="reconnect-btn" onclick="connectToReporter('${conn.id}')">↻ Reconectar</button>` : 
+                                (conn.status === 'active' ? `<button class="reconnect-btn" onclick="disconnectReporter('${conn.id}')" style="background:#ff0000;">Desconectar</button>` : '')
+                            }
                             <a href="${conn.url}" target="_blank" class="btn-test">Probar</a>
                         </div>
                     </div>
@@ -486,204 +555,123 @@
             document.getElementById('reporterCount').textContent = connections.size + ' reporteros';
         }
         
-        // ==================== RECEPTOR CON RECONEXIÓN ROBUSTA ====================
-        let reconnectAttempts = 0;
-        let maxReconnectAttempts = 50; // 5 minutos aprox (con 6s de intervalo)
-        let reconnectInterval = null;
-        let isConnected = false;
-        let currentCall = null;
-        
+        // ==================== RECEPTOR SIMPLIFICADO Y ESTABLE ====================
         function initReceiver(myId) {
             log('Receptor: ' + myId);
-            updateStatus('Iniciando...', 'Conectando al servidor');
+            updateStatus('Conectando...', 'Iniciando...');
             
             peer = new Peer(myId, { 
                 host: '0.peerjs.com', 
                 port: 443, 
                 secure: true, 
-                config: { iceServers },
-                debug: 1
+                config: { iceServers }
             });
             
             peer.on('open', (id) => {
                 log('✓ Listo: ' + id, 'ok');
                 updateStatus('Esperando operador...', 'El operador debe conectarse a este ID');
-                startReconnectSystem();
+                document.getElementById('infoStatus').textContent = 'Esperando...';
+                document.getElementById('infoStatus').style.color = '#ffff00';
             });
             
             peer.on('error', (err) => {
                 log('✗ ' + err.type, 'err');
                 if (err.type === 'unavailable-id') {
-                    updateStatus('Error: ID en uso', 'Usa un ID diferente en la URL (?id=OTRO)');
-                } else if (err.type === 'network' || err.type === 'disconnected') {
-                    updateStatus('Reconectando...', 'Pérdida de conexión con servidor');
-                    peer.reconnect();
+                    updateStatus('Error', 'ID en uso. Cambia el ID en la URL');
+                    document.getElementById('retryBtn').style.display = 'inline-block';
                 }
             });
             
-            peer.on('disconnected', () => {
-                log('Desconectado del servidor', 'err');
-                isConnected = false;
-                showReconnectingState();
-                peer.reconnect();
-            });
-            
+            // ESCUCHAR LLAMADAS ENTRANTES - Nunca recargar la página
             peer.on('call', (call) => {
                 log('📞 Llamada entrante de: ' + call.peer);
                 
-                // Si ya tenemos una llamada activa, cerrarla primero (para permitir reconexión)
-                if (currentCall) {
-                    log('Cerrando llamada anterior para aceptar nueva', 'info');
-                    currentCall.close();
-                }
+                // Siempre contestar
+                call.answer(null);
                 
-                currentCall = call;
-                handleIncomingCall(call);
+                handleCall(call);
             });
         }
         
-        function handleIncomingCall(call) {
-            // Contestar sin enviar nada
-            call.answer(null);
+        function handleCall(call) {
+            updateStatus('Conectando...', 'Estableciendo video...');
+            document.getElementById('waitingReconnect').classList.remove('visible');
             
-            updateStatus('Conectando...', 'Estableciendo canal de video');
-            hideReconnectingState();
-            
-            let gotStream = false;
-            let connectionTimeout = null;
-            
-            // Timeout de seguridad - si no llega stream en 15s, mostrar error
-            connectionTimeout = setTimeout(() => {
-                if (!gotStream) {
-                    log('Timeout: No llegó stream en 15s', 'err');
-                    // No mostrar error fatal, permitir reintento
-                    showReconnectingState();
-                }
-            }, 15000);
+            let streamReceived = false;
             
             call.on('stream', (stream) => {
-                gotStream = true;
-                clearTimeout(connectionTimeout);
-                handleStreamActive(stream);
+                streamReceived = true;
+                log('✓ Stream recibido', 'ok');
+                
+                const video = document.getElementById('remoteVideo');
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    document.getElementById('overlay').classList.add('hidden');
+                    document.getElementById('waitingReconnect').classList.remove('visible');
+                    document.getElementById('infoStatus').textContent = '✓ Recibiendo';
+                    document.getElementById('infoStatus').style.color = '#00ff00';
+                    
+                    log(`Video: ${video.videoWidth}x${video.videoHeight}`, 'ok');
+                };
+                
+                // Si el track termina (operador cortó), mostrar espera pero NO recargar
+                stream.getVideoTracks().forEach(track => {
+                    track.onended = () => {
+                        log('Track terminado', 'err');
+                        showWaitingState();
+                    };
+                });
             });
             
             call.on('close', () => {
-                log('Llamada cerrada por operador', 'info');
-                handleStreamLost();
+                log('Llamada cerrada');
+                if (!streamReceived) {
+                    updateStatus('No conectado', 'El operador cerró antes de enviar video');
+                } else {
+                    showWaitingState();
+                }
             });
             
             call.on('error', (err) => {
-                log('Error en llamada: ' + err.message, 'err');
-                handleStreamLost();
-            });
-        }
-        
-        function handleStreamActive(stream) {
-            isConnected = true;
-            reconnectAttempts = 0; // Resetear contador al conectar exitosamente
-            
-            const video = document.getElementById('remoteVideo');
-            video.srcObject = stream;
-            
-            video.onloadedmetadata = () => {
-                log(`✓ Video activo: ${video.videoWidth}x${video.videoHeight}`, 'ok');
-                document.getElementById('overlay').classList.add('hidden');
-                document.getElementById('infoStatus').textContent = '✓ Recibiendo señal';
-                document.getElementById('infoStatus').style.color = '#00ff00';
-            };
-            
-            // Detectar si el track se cierra (operador detiene cámara)
-            stream.getVideoTracks().forEach(track => {
-                track.onended = () => {
-                    log('Track de video finalizado', 'err');
-                    handleStreamLost();
-                };
+                log('Error: ' + err.message, 'err');
+                showWaitingState();
             });
             
-            // Keep alive
-            setInterval(() => {
-                if (video.paused && isConnected) {
-                    video.play().catch(e => {});
-                }
-            }, 2000);
-        }
-        
-        function handleStreamLost() {
-            isConnected = false;
-            currentCall = null;
-            
-            // NO ocultar el video inmediatamente, puede reconectar rápido
-            showReconnectingState();
-            
-            // Iniciar sistema de reconexión automática
-            startReconnectSystem();
-        }
-        
-        function showReconnectingState() {
-            // Mostrar barra sutil arriba en lugar de pantalla completa
-            document.getElementById('reconnectingBar').classList.add('visible');
-            document.getElementById('infoStatus').textContent = '⚠ Señal perdida - Reconectando...';
-            document.getElementById('infoStatus').style.color = '#ffff00';
-            
-            // Si pasan 10 segundos sin reconectar, mostrar overlay parcial
+            // Timeout si no llega stream en 15s
             setTimeout(() => {
-                if (!isConnected) {
-                    document.getElementById('overlay').classList.remove('hidden');
-                    document.getElementById('mainSpinner').style.display = 'none'; // Ocultar spinner grande
-                    document.getElementById('mainStatus').textContent = 'Esperando operador...';
-                    document.getElementById('subStatus').textContent = 'La conexión se perdió. Intentando reconectar automáticamente...';
-                    document.getElementById('manualReconnectBtn').style.display = 'inline-block';
-                    updateRetryInfo();
+                if (!streamReceived) {
+                    updateStatus('Timeout', 'No llegó video en 15s. Intenta de nuevo.');
+                    document.getElementById('retryBtn').style.display = 'inline-block';
                 }
-            }, 10000);
+            }, 15000);
         }
         
-        function hideReconnectingState() {
-            document.getElementById('reconnectingBar').classList.remove('visible');
-            document.getElementById('overlay').classList.add('hidden');
-            document.getElementById('mainSpinner').style.display = 'block';
-            document.getElementById('manualReconnectBtn').style.display = 'none';
-        }
-        
-        function startReconnectSystem() {
-            // Cancelar intervalo anterior si existe
-            if (reconnectInterval) clearInterval(reconnectInterval);
+        function showWaitingState() {
+            document.getElementById('overlay').classList.remove('hidden');
+            document.getElementById('overlay').classList.add('partial');
+            document.getElementById('mainSpinner').style.display = 'none';
+            document.getElementById('mainStatus').textContent = 'Esperando operador...';
+            document.getElementById('subStatus').textContent = 'La conexión se perdió. Esperando que el operador vuelva a conectar...';
+            document.getElementById('retryBtn').style.display = 'inline-block';
+            document.getElementById('infoStatus').textContent = 'Desconectado';
+            document.getElementById('infoStatus').style.color = '#ff0000';
             
-            reconnectInterval = setInterval(() => {
-                if (isConnected) {
-                    clearInterval(reconnectInterval);
-                    reconnectInterval = null;
-                    return;
-                }
-                
-                reconnectAttempts++;
-                updateRetryInfo();
-                
-                log(`Reintento ${reconnectAttempts}/${maxReconnectAttempts}...`);
-                
-                // Intentar reconectar peer si está desconectado
-                if (peer && peer.disconnected) {
-                    peer.reconnect();
-                }
-                
-                // Si llegamos al máximo, sugerir recarga manual
-                if (reconnectAttempts >= maxReconnectAttempts) {
-                    clearInterval(reconnectInterval);
-                    document.getElementById('subStatus').innerHTML = 'No se pudo reconectar automáticamente.<br><button onclick="location.reload()" class="big-btn" style="margin-top:10px;">Recargar Página</button>';
-                }
-                
-            }, 6000); // Cada 6 segundos
+            // El receptor ahora espera PACIENTEMENTE a que llegue una NUEVA llamada (call)
+            // No hace nada más, solo espera el evento peer.on('call')
+            log('Esperando nueva llamada del operador...');
         }
         
-        function updateRetryInfo() {
-            const info = document.getElementById('retryInfo');
-            if (info) {
-                info.textContent = `Intento ${reconnectAttempts} - Reconexión automática activa`;
+        function manualRetry() {
+            // En lugar de recargar, solo ocultamos el error y seguimos esperando
+            document.getElementById('retryBtn').style.display = 'none';
+            document.getElementById('mainSpinner').style.display = 'block';
+            updateStatus('Esperando...', 'Listo para recibir. Pide al operador que haga clic en "↻ Reconectar"');
+            
+            // Si el peer se desconectó, reconectar
+            if (peer && peer.disconnected) {
+                peer.reconnect();
             }
-        }
-        
-        function manualReconnect() {
-            location.reload();
         }
         
         function updateStatus(main, sub) {
@@ -692,9 +680,8 @@
         }
         
         function toggleFullscreen() {
-            const doc = document.documentElement;
             if (!document.fullscreenElement) {
-                doc.requestFullscreen().catch(err => {});
+                document.documentElement.requestFullscreen().catch(err => {});
             } else {
                 document.exitFullscreen();
             }
