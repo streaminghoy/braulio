@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Retorno Simple P2P</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #fff; overflow-x: hidden; }
+        
+        /* EMISOR */
+        .broadcast { display: none; min-height: 100vh; flex-direction: column; }
+        .broadcast.active { display: flex; }
+        
+        header { background: #111; padding: 15px; border-bottom: 2px solid #ff6b00; }
+        h1 { color: #ff6b00; font-size: 20px; }
+        
+        .content { padding: 20px; max-width: 900px; margin: 0 auto; width: 100%; }
+        .card { background: #141414; border: 1px solid #333; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+        
+        .preview { background: #000; border-radius: 8px; aspect-ratio: 16/9; margin-bottom: 15px; position: relative; overflow: hidden; border: 2px solid #333; }
+        .preview video { width: 100%; height: 100%; object-fit: contain; display: block; }
+        .badge-res { position: absolute; bottom: 10px; right: 10px; background: rgba(0,0,0,0.8); color: #0f0; padding: 5px 10px; border-radius: 4px; font-family: monospace; font-size: 12px; display: none; }
+        
+        .btns { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
+        button { padding: 12px 20px; border: none; border-radius: 6px; background: #2a2a2a; color: #fff; cursor: pointer; font-weight: 600; font-size: 14px; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        button.primary { background: #ff6b00; color: #000; }
+        button.active { background: #2a1f0f; border: 2px solid #ff6b00; }
+        
+        .status-bar { background: #1a1a1a; padding: 10px 15px; margin: -20px -20px 20px -20px; border-bottom: 1px solid #333; font-size: 13px; color: #888; }
+        .status-bar.online { color: #0f0; }
+        
+        input { width: 100%; padding: 12px; background: #0f0f0f; border: 1px solid #444; color: #fff; border-radius: 6px; margin-bottom: 10px; font-family: monospace; font-size: 14px; }
+        
+        .reporter { background: #0f0f0f; border: 1px solid #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
+        .reporter-id { color: #0f0; font-family: monospace; font-weight: bold; font-size: 16px; margin-bottom: 5px; }
+        .reporter-url { font-size: 12px; color: #666; word-break: break-all; margin-bottom: 10px; background: #1a1a1a; padding: 8px; border-radius: 4px; }
+        .reporter-status { font-size: 12px; color: #888; }
+        .reporter-status.connected { color: #0f0; }
+        .reporter-status.error { color: #f00; }
+        
+        .row { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+        
+        /* RECEPTOR */
+        .receiver { display: none; width: 100vw; height: 100vh; background: #000; position: relative; }
+        .receiver.active { display: flex; align-items: center; justify-content: center; }
+        .receiver video { width: 100%; height: 100%; object-fit: contain; }
+        
+        .waiting { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; }
+        .waiting.hidden { display: none; }
+        .spinner { width: 50px; height: 50px; border: 4px solid #222; border-top-color: #ff6b00; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .info-overlay { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px; border-left: 3px solid #ff6b00; max-width: 300px; }
+        .info-overlay h3 { color: #ff6b00; font-size: 12px; margin-bottom: 5px; }
+        .info-overlay .id { color: #0f0; font-family: monospace; font-size: 18px; font-weight: bold; }
+        .info-overlay .status { color: #888; font-size: 11px; margin-top: 5px; }
+        
+        .btn-fullscreen { position: absolute; bottom: 30px; right: 30px; width: 60px; height: 60px; border-radius: 50%; background: #ff6b00; border: none; color: #000; font-size: 24px; cursor: pointer; z-index: 5; }
+    </style>
+</head>
+<body>
+
+    <!-- EMISOR -->
+    <div id="broadcast" class="broadcast">
+        <header>
+            <h1>📡 RETORNO P2P</h1>
+        </header>
+        
+        <div class="content">
+            <div class="card">
+                <div id="srvStatus" class="status-bar">Conectando al servidor...</div>
+                
+                <div class="preview">
+                    <video id="localVideo" autoplay muted playsinline></video>
+                    <div id="resBadge" class="badge-res">--</div>
+                </div>
+                
+                <div class="btns">
+                    <button onclick="startCam('vmix')" id="btn-vmix">🎥 vMix/OBS</button>
+                    <button onclick="startCam('screen')" id="btn-screen">🖥️ Pantalla</button>
+                    <button onclick="startCam('camera')" id="btn-camera">📷 Cámara</button>
+                    <button onclick="toggleQuality()" id="btn-quality" style="margin-left: auto; background: #1a1a1a;">⚙️ 360p</button>
+                </div>
+                
+                <div style="font-size: 13px; color: #888; margin-top: 10px;">
+                    1. Selecciona fuente arriba | 2. Agrega reportero abajo | 3. Copia y envía el link
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3 style="margin-bottom: 15px; color: #ff6b00;">Agregar Reportero</h3>
+                <input type="text" id="repId" placeholder="Nombre (ej: JUAN1)" onkeypress="if(event.key==='Enter')addRep()">
+                <button class="primary" onclick="addRep()" id="btnAdd" disabled style="width: 100%;">CREAR REPORTERO</button>
+                
+                <div id="repList" style="margin-top: 20px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RECEPTOR -->
+    <div id="receiver" class="receiver">
+        <div id="waiting" class="waiting">
+            <div class="spinner"></div>
+            <div style="color: #fff; font-size: 18px; margin-bottom: 10px;">Esperando señal...</div>
+            <div style="color: #666; font-size: 14px;">ID: <span id="myId">--</span></div>
+            <div id="errMsg" style="color: #f00; margin-top: 20px; display: none;"></div>
+            <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #ff6b00; border: none; color: #000; border-radius: 6px; cursor: pointer; display: none;" id="reloadBtn">Reintentar</button>
+        </div>
+        
+        <video id="remoteVideo" autoplay playsinline></video>
+        
+        <div class="info-overlay">
+            <h3>MI ID</h3>
+            <div class="id" id="displayId">--</div>
+            <div class="status" id="connStatus">Iniciando...</div>
+        </div>
+        
+        <button class="btn-fullscreen" onclick="toggleFs()">⛶</button>
+    </div>
+
+    <script>
+        // CONFIG
+        const quality = {
+            '360p': { w: 640, h: 360, fps: 20 },
+            '480p': { w: 854, h: 480, fps: 25 },
+            '720p': { w: 1280, h: 720, fps: 30 }
+        };
+        let currQuality = '360p';
+        let localStream = null;
+        let peer = null;
+        let reps = [];
+        let currentCam = null;
+        
+        // MODO
+        const params = new URLSearchParams(location.search);
+        const isReceiver = params.has('id');
+        const myId = params.get('id');
+        
+        if (isReceiver) {
+            document.getElementById('broadcast').style.display = 'none';
+            document.getElementById('receiver').classList.add('active');
+            document.getElementById('myId').textContent = myId;
+            document.getElementById('displayId').textContent = myId;
+            initReceiver();
+        } else {
+            document.getElementById('broadcast').classList.add('active');
+            initBroadcast();
+        }
+        
+        // =================== EMISOR ===================
+        function initBroadcast() {
+            const mid = 'M-' + Math.random().toString(36).substr(2, 5).toUpperCase();
+            peer = new Peer(mid, {
+                host: '0.peerjs.com',
+                port: 443,
+                secure: true
+            });
+            
+            peer.on('open', () => {
+                document.getElementById('srvStatus').textContent = '✓ Servidor conectado (' + mid + ')';
+                document.getElementById('srvStatus').classList.add('online');
+                document.getElementById('btnAdd').disabled = false;
+            });
+            
+            peer.on('error', err => {
+                document.getElementById('srvStatus').textContent = 'Error: ' + err.type;
+            });
+        }
+        
+        async function startCam(type) {
+            try {
+                // Si ya hay stream, detenerlo solo si cambiamos de tipo
+                if (localStream && currentCam !== type) {
+                    localStream.getTracks().forEach(t => t.stop());
+                    localStream = null;
+                }
+                
+                currentCam = type;
+                const q = quality[currQuality];
+                
+                document.querySelectorAll('.btns button').forEach(b => b.classList.remove('active'));
+                document.getElementById('btn-' + type).classList.add('active');
+                
+                if (type === 'screen') {
+                    localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+                    localStream.getVideoTracks()[0].onended = () => {
+                        localStream = null;
+                        document.querySelectorAll('.btns button').forEach(b => b.classList.remove('active'));
+                    };
+                } else {
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: q.w, height: q.h, frameRate: q.fps },
+                        audio: true
+                    });
+                }
+                
+                document.getElementById('localVideo').srcObject = localStream;
+                const s = localStream.getVideoTracks()[0].getSettings();
+                document.getElementById('resBadge').textContent = s.width + 'x' + s.height;
+                document.getElementById('resBadge').style.display = 'block';
+                
+                // Reconectar reps existentes si hay stream nuevo
+                reps.forEach(r => {
+                    if (r.call) { try { r.call.close(); } catch(e){} r.call = null; }
+                    if (!r.call) callRep(r);
+                });
+                
+            } catch(e) {
+                alert('Error: ' + e.message);
+            }
+        }
+        
+        function toggleQuality() {
+            const qs = Object.keys(quality);
+            const i = qs.indexOf(currQuality);
+            currQuality = qs[(i + 1) % qs.length];
+            document.getElementById('btn-quality').textContent = '⚙️ ' + currQuality;
+            if (currentCam) startCam(currentCam); // Reiniciar con nueva calidad
+        }
+        
+        function addRep() {
+            const id = document.getElementById('repId').value.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+            if (!id) return;
+            if (reps.find(r => r.id === id)) return alert('ID ya existe');
+            
+            const url = location.origin + location.pathname + '?id=' + id;
+            const rep = { id, url, call: null, status: 'waiting' };
+            reps.push(rep);
+            
+            renderReps();
+            document.getElementById('repId').value = '';
+            
+            if (localStream) callRep(rep);
+        }
+        
+        function callRep(rep) {
+            if (!localStream || !peer) return;
+            
+            console.log('Llamando a', rep.id);
+            rep.status = 'conectando...';
+            renderReps();
+            
+            try {
+                const call = peer.call(rep.id, localStream);
+                rep.call = call;
+                
+                call.on('stream', () => {
+                    rep.status = 'conectado ✓';
+                    renderReps();
+                });
+                
+                call.on('close', () => {
+                    rep.call = null;
+                    rep.status = 'desconectado';
+                    renderReps();
+                });
+                
+                call.on('error', () => {
+                    rep.call = null;
+                    rep.status = 'error';
+                    renderReps();
+                });
+                
+                // Timeout
+                setTimeout(() => {
+                    if (rep.status === 'conectando...') {
+                        rep.status = 'timeout (recarga receptor)';
+                        if (rep.call) { try { rep.call.close(); } catch(e){} rep.call = null; }
+                        renderReps();
+                    }
+                }, 15000);
+                
+            } catch(e) {
+                rep.status = 'error';
+                renderReps();
+            }
+        }
+        
+        function renderReps() {
+            const div = document.getElementById('repList');
+            if (reps.length === 0) { div.innerHTML = ''; return; }
+            
+            div.innerHTML = reps.map(r => `
+                <div class="reporter">
+                    <div class="reporter-id">${r.id}</div>
+                    <div class="reporter-url">${r.url}</div>
+                    <div class="row">
+                        <span class="reporter-status ${r.status.includes('✓') ? 'connected' : r.status.includes('error') || r.status.includes('timeout') ? 'error' : ''}">Estado: ${r.status}</span>
+                        <button onclick="copy('${r.url}')" style="margin-left: auto; font-size: 12px; padding: 6px 12px;">📋 Copiar</button>
+                        ${r.status === 'desconectado' || r.status.includes('error') || r.status.includes('timeout') ? 
+                            `<button onclick="recall('${r.id}')" style="font-size: 12px; padding: 6px 12px; background: #0088ff;">↻ Reconectar</button>` : ''}
+                        <button onclick="delRep('${r.id}')" style="font-size: 12px; padding: 6px 12px; background: #f00;">×</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function recall(id) {
+            const r = reps.find(x => x.id === id);
+            if (r) {
+                if (r.call) { try { r.call.close(); } catch(e){} r.call = null; }
+                r.status = 'waiting';
+                callRep(r);
+            }
+        }
+        
+        function delRep(id) {
+            const r = reps.find(x => x.id === id);
+            if (r && r.call) try { r.call.close(); } catch(e){}
+            reps = reps.filter(x => x.id !== id);
+            renderReps();
+        }
+        
+        async function copy(url) {
+            try {
+                await navigator.clipboard.writeText(url);
+                alert('Link copiado al portapapeles');
+            } catch(e) {
+                const t = document.createElement('textarea');
+                t.value = url;
+                document.body.appendChild(t);
+                t.select();
+                document.execCommand('copy');
+                document.body.removeChild(t);
+                alert('Link copiado');
+            }
+        }
+        
+        // =================== RECEPTOR ===================
+        function initReceiver() {
+            peer = new Peer(myId, {
+                host: '0.peerjs.com',
+                port: 443,
+                secure: true
+            });
+            
+            peer.on('open', () => {
+                document.getElementById('connStatus').textContent = 'Esperando operador...';
+                document.getElementById('connStatus').style.color = '#ff6b00';
+            });
+            
+            peer.on('error', err => {
+                document.getElementById('connStatus').textContent = 'Error: ' + err.type;
+                document.getElementById('connStatus').style.color = '#f00';
+                if (err.type === 'unavailable-id') {
+                    document.getElementById('errMsg').textContent = 'Este ID ya está en uso. Usa otro.';
+                    document.getElementById('errMsg').style.display = 'block';
+                    document.getElementById('reloadBtn').style.display = 'inline-block';
+                }
+            });
+            
+            peer.on('call', call => {
+                console.log('Llamada entrante');
+                document.getElementById('connStatus').textContent = 'Recibiendo video...';
+                
+                call.answer(null); // Sin enviar nada
+                
+                call.on('stream', stream => {
+                    console.log('Stream recibido');
+                    const v = document.getElementById('remoteVideo');
+                    v.srcObject = stream;
+                    document.getElementById('waiting').classList.add('hidden');
+                    document.getElementById('connStatus').textContent = '✓ Conectado';
+                    document.getElementById('connStatus').style.color = '#0f0';
+                });
+                
+                call.on('close', () => {
+                    console.log('Llamada cerrada');
+                    document.getElementById('waiting').classList.remove('hidden');
+                    document.getElementById('connStatus').textContent = 'Desconectado. Esperando...';
+                    document.getElementById('connStatus').style.color = '#f00';
+                    // No recargar, solo esperar nueva llamada
+                });
+                
+                call.on('error', err => {
+                    console.error('Error llamada:', err);
+                    document.getElementById('connStatus').textContent = 'Error de conexión';
+                });
+            });
+        }
+        
+        function toggleFs() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(e => {});
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
