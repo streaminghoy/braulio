@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>StreamCall Broadcast (Fix Connection & Screen)</title>
+    <title>StreamCall P2P Debug</title>
     
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -12,72 +12,52 @@
     <script src="https://cdn.tailwindcss.com"></script>
     
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { background-color: #050505; color: white; font-family: 'Inter', sans-serif; margin: 0; padding: 0; height: 100vh; overflow: hidden; }
-        
-        .video-box { aspect-ratio: 16/9; background: #000; position: relative; overflow: hidden; }
-        
-        .lobby-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; background: #0f172a; padding: 20px; text-align: center; }
-        .glass-box { background: rgba(30, 41, 59, 0.9); padding: 40px; border-radius: 16px; border: 1px solid #334155; box-shadow: 0 20px 50px rgba(0,0,0,0.5); max-width: 450px; width: 100%; }
-        input { width: 100%; background: #000; border: 2px solid #334155; color: white; padding: 15px; border-radius: 8px; font-size: 1.2rem; text-align: center; font-weight: bold; margin-bottom: 20px; outline: none; text-transform: uppercase; }
-        
-        .btn { width: 100%; padding: 12px; font-weight: 900; font-size: 0.85rem; border-radius: 8px; cursor: pointer; border: none; transition: 0.2s; text-transform: uppercase; }
-        .btn-blue { background: #3b82f6; color: white; }
-        .btn-green { background: #10b981; color: black; }
-        .btn-red { background: #ef4444; color: white; }
-        .btn-purple { background: #8b5cf6; color: white; }
-        .btn-gray { background: #334155; color: white; border: 1px solid #475569; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        body { background: #000; color: white; font-family: 'Inter', sans-serif; margin: 0; padding: 0; height: 100vh; overflow: hidden; }
         
         .director-layout { display: flex; flex-direction: column; height: 100vh; background: #0f172a; }
-        .director-header { background: #1e293b; border-bottom: 1px solid #334155; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
-        .broadcast-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; padding: 20px; overflow-y: auto; }
+        .header { background: #1e293b; padding: 15px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         
-        .receiver-card { background: #1e293b; border: 2px solid #334155; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
-        .receiver-header { padding: 10px 15px; background: #0f172a; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
-        .receiver-status { font-size: 0.7rem; font-weight: bold; padding: 4px 8px; border-radius: 20px; }
-        .status-online { background: #10b981; color: black; }
-        .status-offline { background: #64748b; color: white; }
-        .status-live { background: #ef4444; color: white; animation: pulse 2s infinite; }
-        .status-waiting { background: #f59e0b; color: black; }
+        .main-grid { flex: 1; display: grid; grid-template-columns: 1fr 300px; gap: 20px; padding: 20px; overflow: hidden; }
+        @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } }
         
-        .preview-monitor { width: 100%; height: 220px; background: #000; border-bottom: 2px solid #334155; position: relative; }
+        .preview-area { background: #000; border: 2px solid #3b82f6; border-radius: 12px; overflow: hidden; position: relative; aspect-ratio: 16/9; }
         .preview-video { width: 100%; height: 100%; object-fit: contain; }
-        .broadcast-badge { position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; }
-        .resolution-badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: #fbbf24; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; }
         
-        .source-selector { display: flex; gap: 10px; margin-bottom: 15px; }
-        .source-btn { flex: 1; padding: 10px; border: 2px solid #334155; background: #0f172a; color: #94a3b8; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.8rem; }
-        .source-btn.active { border-color: #3b82f6; color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
+        .sidebar { display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
+        .receiver-box { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px; }
+        .rec-status { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; margin-left: 8px; }
+        .rec-offline { background: #64748b; color: white; }
+        .rec-connected { background: #f59e0b; color: black; }
+        .rec-streaming { background: #10b981; color: black; animation: pulse 2s infinite; }
         
-        .log-console { background: #000; border: 1px solid #334155; border-radius: 6px; padding: 10px; margin-top: 10px; font-family: monospace; font-size: 10px; color: #94a3b8; height: 100px; overflow-y: auto; }
-        .log-entry { margin-bottom: 2px; }
-        .log-error { color: #ef4444; }
-        .log-success { color: #10b981; }
-        .log-info { color: #3b82f6; }
+        .log-box { background: #000; border: 1px solid #334155; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 11px; color: #94a3b8; height: 150px; overflow-y: auto; margin-top: 10px; }
+        .log-line { margin-bottom: 3px; border-left: 2px solid transparent; padding-left: 5px; }
+        .log-ok { border-color: #10b981; color: #10b981; }
+        .log-err { border-color: #ef4444; color: #ef4444; }
+        .log-warn { border-color: #f59e0b; color: #f59e0b; }
+        
+        .btn { padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+        .btn-red { background: #ef4444; color: white; }
+        .btn-green { background: #10b981; color: black; }
+        .btn-blue { background: #3b82f6; color: white; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         
         /* Viewer */
-        .viewer-layout { width: 100vw; height: 100vh; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; }
-        .viewer-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+        .viewer-container { width: 100vw; height: 100vh; background: #0f172a; display: flex; flex-direction: column; position: relative; }
+        .debug-overlay { position: absolute; top: 0; left: 0; right: 0; background: rgba(0,0,0,0.9); z-index: 100; padding: 20px; font-family: monospace; font-size: 13px; max-height: 40vh; overflow-y: auto; border-bottom: 2px solid #3b82f6; transition: transform 0.3s; }
+        .debug-overlay.collapsed { transform: translateY(-90%); }
+        .debug-toggle { position: absolute; bottom: -30px; left: 50%; transform: translateX(-50%); background: #3b82f6; color: white; padding: 5px 20px; border-radius: 0 0 12px 12px; cursor: pointer; font-size: 12px; }
         
-        .status-panel { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
-        .status-icon { font-size: 48px; margin-bottom: 20px; }
-        .status-title { font-size: 1.5rem; font-weight: bold; margin-bottom: 10px; text-align: center; }
-        .status-desc { color: #64748b; text-align: center; font-size: 0.9rem; max-width: 300px; margin-bottom: 20px; }
-        .spinner { width: 40px; height: 40px; border: 3px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; }
+        .video-container { flex: 1; background: #000; display: flex; align-items: center; justify-content: center; position: relative; }
+        .video-el { width: 100%; height: 100%; object-fit: contain; max-height: 100vh; }
         
-        .hidden { display: none !important; }
+        .status-big { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; z-index: 50; pointer-events: none; }
+        .status-big.spinner { width: 60px; height: 60px; border: 4px solid #334155; border-top: 4px solid #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; }
         
-        .video-overlay { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 10px 15px; border-radius: 8px; z-index: 10; }
-        .video-badge { color: #10b981; font-weight: bold; font-size: 0.8rem; }
-        .video-res { color: #64748b; font-size: 0.7rem; margin-top: 2px; }
+        @keyframes spin { 0% { transform: translate(-50%, -50%) rotate(0deg); } 100% { transform: translate(-50%, -50%) rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
         
-        .viewer-controls { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 100; opacity: 0; transition: opacity 0.3s; }
-        .viewer-layout:hover .viewer-controls { opacity: 1; }
-        .control-btn { background: rgba(0,0,0,0.8); border: 1px solid #475569; color: white; padding: 12px 24px; border-radius: 30px; cursor: pointer; font-weight: bold; backdrop-filter: blur(10px); font-size: 0.9rem; }
-        
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .action-btn { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 60; background: #3b82f6; color: white; border: none; padding: 15px 30px; border-radius: 30px; font-weight: bold; font-size: 16px; cursor: pointer; box-shadow: 0 4px 20px rgba(59, 130, 246, 0.5); }
     </style>
 </head>
 <body>
@@ -86,641 +66,489 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
         
-        const PEER_CONFIG = { 
-            config: { 
+        const PEER_CONFIG = {
+            host: '0.peerjs.com',
+            port: 443,
+            secure: true,
+            config: {
                 iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' }, 
-                    { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun2.l.google.com:19302' }
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
                 ]
             },
-            debug: 0
+            debug: 3 // Máximo debug en consola
         };
         
-        const MAX_RECEIVERS = 10;
-        
-        // Helper para logs
-        const useLogger = () => {
+        // Logger helper
+        const useLog = () => {
             const [logs, setLogs] = useState([]);
-            const addLog = (msg, type = 'info') => {
-                const time = new Date().toLocaleTimeString('es', {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
-                setLogs(prev => [...prev.slice(-20), { msg: `[${time}] ${msg}`, type }]);
+            const add = (msg, type='info') => {
+                const t = new Date().toLocaleTimeString().split(' ')[0];
+                setLogs(prev => [...prev.slice(-30), {t, msg, type}]);
+                console.log(`[${type.toUpperCase()}] ${msg}`);
             };
-            return { logs, addLog };
+            return { logs, add, clear: () => setLogs([]) };
         };
-
-        // --- DIRECTOR ---
-        const DirectorView = ({ roomName }) => {
+        
+        // ==================== DIRECTOR ====================
+        const Director = ({ room }) => {
+            const { logs, add } = useLog();
+            const [stream, setStream] = useState(null);
             const [isBroadcasting, setIsBroadcasting] = useState(false);
-            const [sourceType, setSourceType] = useState('camera');
-            const [broadcastStream, setBroadcastStream] = useState(null);
-            const [quality, setQuality] = useState('720');
-            const [receivers, setReceivers] = useState(Array(MAX_RECEIVERS).fill(null).map((_, i) => ({
-                id: i + 1,
-                connected: false,
-                receiving: false,
-                peerId: `sc_viewer_${roomName.toUpperCase()}_${i + 1}`
-            })));
-            const [showPreview, setShowPreview] = useState(false);
+            const [receivers, setReceivers] = useState({});
+            const [source, setSource] = useState('camera'); // camera | screen
             
-            const { logs, addLog } = useLogger();
-            const peer = useRef(null);
+            const peerRef = useRef(null);
             const streamRef = useRef(null);
-            const previewVideoRef = useRef(null);
-            const connectionsRef = useRef({}); // Guardar las conexiones activas
-
+            const videoRef = useRef(null);
+            
             useEffect(() => {
-                if (previewVideoRef.current && broadcastStream) {
-                    previewVideoRef.current.srcObject = broadcastStream;
+                if (videoRef.current && stream) {
+                    videoRef.current.srcObject = stream;
                 }
-            }, [broadcastStream]);
-
+            }, [stream]);
+            
             useEffect(() => {
-                const directorId = `sc_director_${roomName.toUpperCase()}`;
-                addLog(`Iniciando Director: ${directorId}`, 'info');
+                const id = `dir-${room}`;
+                add(`Iniciando Peer como ${id}`, 'info');
                 
-                peer.current = new Peer(directorId, PEER_CONFIG);
+                peerRef.current = new Peer(id, PEER_CONFIG);
                 
-                peer.current.on('open', (id) => {
-                    addLog(`✅ Conectado a red P2P`, 'success');
+                peerRef.current.on('open', () => {
+                    add('✅ Peer conectado a servidor', 'ok');
                 });
                 
-                peer.current.on('error', (err) => {
-                    addLog(`❌ Error: ${err.type}`, 'error');
-                    if (err.type === 'unavailable-id') {
-                        addLog('ID ocupado, recargando...', 'error');
-                        setTimeout(() => window.location.reload(), 2000);
-                    }
+                peerRef.current.on('error', err => {
+                    add(`❌ Error: ${err.type}`, 'err');
                 });
-
-                // Cuando un viewer se conecta (handshake)
-                peer.current.on('connection', (conn) => {
-                    const slotMatch = conn.peer.match(/_(\d+)$/);
-                    if (!slotMatch) return;
+                
+                // Cuando un viewer se conecta
+                peerRef.current.on('connection', conn => {
+                    const slot = conn.peer.split('-').pop();
+                    add(`👤 Viewer ${slot} conectado (datos)`, 'ok');
                     
-                    const slotId = parseInt(slotMatch[1]);
-                    addLog(`👤 Viewer ${slotId} conectado (señal)`, 'info');
+                    setReceivers(prev => ({
+                        ...prev,
+                        [slot]: { ...prev[slot], id: slot, conn, status: 'connected', call: null }
+                    }));
                     
-                    setReceivers(prev => {
-                        const newRec = [...prev];
-                        newRec[slotId - 1] = { ...newRec[slotId - 1], connected: true };
-                        return newRec;
-                    });
-                    
-                    connectionsRef.current[slotId] = conn;
-                    
-                    // Cuando el viewer solicita stream explícitamente
-                    conn.on('data', (data) => {
-                        if (data === 'REQUEST_STREAM' && streamRef.current) {
-                            addLog(`📡 Viewer ${slotId} solicita stream`, 'info');
-                            callReceiver(slotId);
+                    conn.on('data', data => {
+                        if (data === 'READY_FOR_STREAM') {
+                            add(`📡 Viewer ${slot} listo para recibir`, 'warn');
+                            if (streamRef.current && isBroadcasting) {
+                                sendStreamTo(slot);
+                            } else {
+                                add(`⏳ Esperando que Director inicie broadcast primero`, 'warn');
+                                conn.send('WAITING_FOR_BROADCAST');
+                            }
                         }
                     });
                     
                     conn.on('close', () => {
-                        addLog(`👤 Viewer ${slotId} desconectado`, 'error');
-                        setReceivers(prev => {
-                            const newRec = [...prev];
-                            newRec[slotId - 1] = { ...newRec[slotId - 1], connected: false, receiving: false };
-                            return newRec;
-                        });
-                        delete connectionsRef.current[slotId];
+                        add(`👤 Viewer ${slot} desconectado`, 'err');
+                        setReceivers(prev => ({
+                            ...prev,
+                            [slot]: { ...prev[slot], status: 'offline' }
+                        }));
                     });
                 });
-
-                return () => {
-                    peer.current?.destroy();
-                    streamRef.current?.getTracks().forEach(t => t.stop());
-                };
-            }, [roomName]);
-
-            const startBroadcast = async () => {
-                addLog(`Solicitando ${sourceType}...`, 'info');
+                
+                return () => peerRef.current?.destroy();
+            }, [room]);
+            
+            const sendStreamTo = (slot) => {
+                if (!peerRef.current || !streamRef.current) return;
+                
+                const viewerId = `view-${room}-${slot}`;
+                add(`Llamando a ${viewerId}...`, 'info');
                 
                 try {
-                    let stream;
+                    const call = peerRef.current.call(viewerId, streamRef.current);
                     
-                    if (sourceType === 'screen') {
-                        // Opciones específicas para que el navegador muestre el selector
-                        stream = await navigator.mediaDevices.getDisplayMedia({
-                            video: {
-                                cursor: "always",
-                                displaySurface: "monitor" // "monitor", "window", "browser"
-                            },
-                            audio: {
-                                echoCancellation: false,
-                                noiseSuppression: false,
-                                sampleRate: 44100
-                            }
-                        });
-                        addLog('✅ Pantalla seleccionada', 'success');
-                    } else {
-                        const res = quality === '360' ? { width: 640, height: 360 } : { width: 1280, height: 720 };
-                        stream = await navigator.mediaDevices.getUserMedia({
-                            video: { 
-                                width: { ideal: res.width }, 
-                                height: { ideal: res.height },
-                                aspectRatio: 16/9
-                            },
-                            audio: { echoCancellation: true, noiseSuppression: true }
-                        });
-                        addLog('✅ Cámara iniciada', 'success');
+                    if (!call) {
+                        add(`❌ No se pudo crear llamada`, 'err');
+                        return;
                     }
                     
-                    // Detectar cierre de pantalla (solo para screen)
-                    if (sourceType === 'screen') {
-                        const videoTrack = stream.getVideoTracks()[0];
-                        if (videoTrack) {
-                            videoTrack.onended = () => {
-                                addLog('⏹ Compartición detenida por usuario', 'error');
-                                stopBroadcast();
-                            };
-                        }
-                    }
+                    setReceivers(prev => ({
+                        ...prev,
+                        [slot]: { ...prev[slot], status: 'streaming', call }
+                    }));
                     
-                    streamRef.current = stream;
-                    setBroadcastStream(stream);
-                    setIsBroadcasting(true);
-                    setShowPreview(true);
-                    
-                    const settings = stream.getVideoTracks()[0]?.getSettings();
-                    addLog(`🎬 Broadcast iniciado: ${settings?.width}x${settings?.height}`, 'success');
-                    
-                    // Enviar a viewers ya conectados
-                    Object.keys(connectionsRef.current).forEach(slotId => {
-                        const conn = connectionsRef.current[slotId];
-                        if (conn.open) {
-                            addLog(`Enviando a Viewer ${slotId}...`, 'info');
-                            callReceiver(parseInt(slotId));
-                        }
-                    });
-                    
-                } catch (err) {
-                    console.error(err);
-                    if (err.name === 'NotAllowedError') {
-                        addLog('❌ Permiso denegado o cancelado por usuario', 'error');
-                        alert('Debes permitir el acceso para iniciar el broadcast');
-                    } else {
-                        addLog(`❌ Error: ${err.message}`, 'error');
-                        alert('Error: ' + err.message);
-                    }
-                }
-            };
-
-            const callReceiver = (slotId) => {
-                if (!peer.current || !streamRef.current) return;
-                
-                const peerId = `sc_viewer_${roomName.toUpperCase()}_${slotId}`;
-                addLog(`Llamando a ${peerId}...`, 'info');
-                
-                try {
-                    const call = peer.current.call(peerId, streamRef.current);
-                    
-                    setReceivers(prev => {
-                        const newRec = [...prev];
-                        newRec[slotId - 1] = { ...newRec[slotId - 1], receiving: true };
-                        return newRec;
-                    });
-                    
-                    call.on('error', (err) => {
-                        addLog(`Error llamada #${slotId}: ${err}`, 'error');
+                    call.on('error', err => {
+                        add(`❌ Error llamada #${slot}: ${err}`, 'err');
                     });
                     
                     call.on('close', () => {
-                        setReceivers(prev => {
-                            const newRec = [...prev];
-                            newRec[slotId - 1] = { ...newRec[slotId - 1], receiving: false };
-                            return newRec;
-                        });
+                        add(`📴 Llamada cerrada #${slot}`, 'warn');
+                        setReceivers(prev => ({
+                            ...prev,
+                            [slot]: { ...prev[slot], status: 'connected' }
+                        }));
                     });
                     
                 } catch (e) {
-                    addLog(`Error al llamar #${slotId}: ${e.message}`, 'error');
+                    add(`❌ Excepción: ${e.message}`, 'err');
                 }
             };
-
+            
+            const startBroadcast = async () => {
+                try {
+                    let s;
+                    if (source === 'screen') {
+                        add('Solicitando pantalla...', 'info');
+                        s = await navigator.mediaDevices.getDisplayMedia({
+                            video: { width: 1280, height: 720, aspectRatio: 16/9 },
+                            audio: true
+                        });
+                        s.getVideoTracks()[0].onended = () => stopBroadcast();
+                    } else {
+                        add('Solicitando cámara...', 'info');
+                        s = await navigator.mediaDevices.getUserMedia({
+                            video: { width: 1280, height: 720, aspectRatio: 16/9 },
+                            audio: true
+                        });
+                    }
+                    
+                    streamRef.current = s;
+                    setStream(s);
+                    setIsBroadcasting(true);
+                    add(`✅ Stream iniciado: ${s.getVideoTracks()[0].label}`, 'ok');
+                    
+                    // Enviar a viewers ya conectados que estén esperando
+                    Object.entries(receivers).forEach(([slot, rec]) => {
+                        if (rec.status === 'connected' && rec.conn.open) {
+                            rec.conn.send('BROADCAST_STARTED');
+                            setTimeout(() => sendStreamTo(slot), 500);
+                        }
+                    });
+                    
+                } catch (e) {
+                    add(`❌ Error: ${e.message}`, 'err');
+                    alert('Error: ' + e.message);
+                }
+            };
+            
             const stopBroadcast = () => {
                 streamRef.current?.getTracks().forEach(t => t.stop());
                 streamRef.current = null;
-                setBroadcastStream(null);
+                setStream(null);
                 setIsBroadcasting(false);
-                setShowPreview(false);
-                addLog('⏹ Broadcast detenido', 'error');
-                
-                setReceivers(prev => prev.map(r => ({ ...r, receiving: false })));
+                add('⏹ Broadcast detenido', 'warn');
             };
-
-            const copyLink = (slotId) => {
-                const url = `${window.location.href.split('?')[0]}?mode=viewer&room=${roomName}&slot=${slotId}`;
+            
+            const copyLink = slot => {
+                const url = `${window.location.origin}${window.location.pathname}?mode=view&room=${room}&slot=${slot}`;
                 navigator.clipboard.writeText(url);
-                addLog(`Link #${slotId} copiado`, 'success');
+                add(`Link #${slot} copiado`, 'ok');
             };
-
+            
             return (
                 <div className="director-layout">
-                    <div className="director-header">
+                    <div className="header">
                         <div>
-                            <h1 className="text-xl font-black text-blue-400 uppercase">BROADCAST DIRECTOR</h1>
-                            <p className="text-gray-400 text-xs font-bold">SALA: {roomName.toUpperCase()} | MAX: 10</p>
+                            <h1 className="text-xl font-bold text-blue-400">DIRECTOR: {room}</h1>
+                            <div className="text-xs text-gray-400">ID: dir-{room}</div>
                         </div>
-                        
-                        <div className="flex items-center gap-3 flex-wrap">
-                            <select 
-                                value={quality} 
-                                onChange={(e) => setQuality(e.target.value)}
-                                disabled={isBroadcasting}
-                                className="bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm"
-                            >
-                                <option value="360">360p</option>
-                                <option value="720">720p HD</option>
+                        <div className="flex gap-2">
+                            <select value={source} onChange={e => setSource(e.target.value)} disabled={isBroadcasting} 
+                                className="bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm">
+                                <option value="camera">📷 Cámara</option>
+                                <option value="screen">🖥️ Pantalla</option>
                             </select>
-                            
-                            <div className="source-selector">
-                                <button 
-                                    className={`source-btn ${sourceType === 'camera' ? 'active' : ''}`}
-                                    onClick={() => setSourceType('camera')}
-                                    disabled={isBroadcasting}
-                                >
-                                    📹 CAM
-                                </button>
-                                <button 
-                                    className={`source-btn ${sourceType === 'screen' ? 'active' : ''}`}
-                                    onClick={() => setSourceType('screen')}
-                                    disabled={isBroadcasting}
-                                >
-                                    🖥️ PANT
-                                </button>
-                            </div>
-                            
-                            {!isBroadcasting ? (
-                                <button className="btn btn-red" onClick={startBroadcast} style={{minWidth: '120px'}}>
-                                    🔴 INICIAR
-                                </button>
-                            ) : (
-                                <button className="btn btn-green" onClick={stopBroadcast} style={{minWidth: '120px'}}>
-                                    ⏹ STOP
-                                </button>
-                            )}
+                            {!isBroadcasting ? 
+                                <button onClick={startBroadcast} className="btn btn-red">INICIAR</button> :
+                                <button onClick={stopBroadcast} className="btn btn-green">DETENER</button>
+                            }
                         </div>
                     </div>
-
-                    <div className="broadcast-grid">
-                        {/* Preview Principal */}
-                        <div className="receiver-card" style={{border: '2px solid #3b82f6', gridColumn: window.innerWidth > 1024 ? 'span 2' : 'span 1'}}>
-                            <div className="receiver-header">
-                                <span className="font-bold text-blue-400">TU SEÑAL (PREVIEW)</span>
-                                <span className={`receiver-status ${isBroadcasting ? 'status-live' : 'status-offline'}`}>
-                                    {isBroadcasting ? 'ON AIR' : 'STANDBY'}
-                                </span>
-                            </div>
-                            <div className="video-box preview-monitor">
-                                {showPreview && broadcastStream ? (
-                                    <>
-                                        <video 
-                                            ref={previewVideoRef}
-                                            className="preview-video" 
-                                            autoPlay 
-                                            muted 
-                                            playsInline 
-                                        />
-                                        <div className="broadcast-badge">LIVE</div>
-                                        <div className="resolution-badge">
-                                            {broadcastStream?.getVideoTracks()[0]?.label || 'Video'} | 
-                                            {broadcastStream?.getVideoTracks()[0]?.getSettings()?.width}x
-                                            {broadcastStream?.getVideoTracks()[0]?.getSettings()?.height}
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                                        <div className="text-4xl mb-2">📹</div>
-                                        <div className="font-bold text-sm">PREVIEW</div>
-                                        <div className="text-xs mt-1">Selecciona fuente e inicia</div>
+                    
+                    <div className="main-grid">
+                        <div>
+                            <div className="preview-area">
+                                {stream ? 
+                                    <video ref={videoRef} className="preview-video" autoPlay muted playsInline /> :
+                                    <div className="flex items-center justify-center h-full text-gray-500">
+                                        Preview aparecerá aquí
                                     </div>
-                                )}
+                                }
+                                <div className="absolute top-4 left-4 bg-black/80 px-3 py-1 rounded text-xs font-bold text-yellow-400">
+                                    {isBroadcasting ? '🔴 EN VIVO' : 'STANDBY'}
+                                </div>
                             </div>
                             
-                            {/* Consola de Logs */}
-                            <div className="log-console">
-                                {logs.map((log, i) => (
-                                    <div key={i} className={`log-entry log-${log.type}`}>{log.msg}</div>
+                            <div className="log-box">
+                                {logs.map((l,i) => (
+                                    <div key={i} className={`log-line log-${l.type}`}>
+                                        <span className="opacity-50">[{l.t}]</span> {l.msg}
+                                    </div>
                                 ))}
-                                {logs.length === 0 && <div className="log-entry text-gray-600">Esperando acción...</div>}
                             </div>
                         </div>
-
-                        {/* Receptores 1-10 */}
-                        {receivers.map((rec) => (
-                            <div key={rec.id} className="receiver-card">
-                                <div className="receiver-header">
-                                    <span className="font-bold text-gray-300">#{rec.id}</span>
-                                    <span className={`receiver-status ${
-                                        rec.receiving ? 'status-live' : 
-                                        rec.connected ? 'status-waiting' : 'status-offline'
-                                    }`}>
-                                        {rec.receiving ? 'RECIBIENDO' : rec.connected ? 'ESPERA' : 'OFF'}
-                                    </span>
-                                </div>
-                                <div className="p-3">
-                                    <button 
-                                        className="btn btn-blue text-xs !py-2" 
-                                        onClick={() => copyLink(rec.id)}
-                                        disabled={isBroadcasting && rec.connected && !rec.receiving}
-                                    >
-                                        {rec.receiving ? '✓ ACTIVO' : 'COPIAR LINK'}
-                                    </button>
-                                    {rec.connected && !rec.receiving && isBroadcasting && (
-                                        <div className="text-[10px] text-amber-400 mt-1">
-                                            Conectado pero sin stream - Recargar página del receptor
+                        
+                        <div className="sidebar">
+                            <h3 className="font-bold text-gray-300 mb-2">RECEPTORES (10)</h3>
+                            {[1,2,3,4,5,6,7,8,9,10].map(num => {
+                                const rec = receivers[num];
+                                const status = rec?.status || 'offline';
+                                return (
+                                    <div key={num} className="receiver-box flex justify-between items-center">
+                                        <div>
+                                            <span className="font-bold">#{num}</span>
+                                            <span className={`rec-status ${
+                                                status === 'offline' ? 'rec-offline' : 
+                                                status === 'streaming' ? 'rec-streaming' : 'rec-connected'
+                                            }`}>
+                                                {status === 'offline' ? 'OFF' : 
+                                                 status === 'streaming' ? 'VIDEO' : 'CONECT'}
+                                            </span>
                                         </div>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
+                                        <button onClick={() => copyLink(num)} className="text-xs bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-white">
+                                            LINK
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
             );
         };
-
-        // --- VIEWER ---
-        const ViewerView = ({ roomName, slotId }) => {
-            const [status, setStatus] = useState('init'); // init, connecting, requesting, receiving, error, retrying
-            const [statusMsg, setStatusMsg] = useState('Iniciando...');
-            const [videoInfo, setVideoInfo] = useState('');
-            const [retryCount, setRetryCount] = useState(0);
+        
+        // ==================== VIEWER ====================
+        const Viewer = ({ room, slot }) => {
+            const { logs, add } = useLog();
+            const [hasVideo, setHasVideo] = useState(false);
+            const [showDebug, setShowDebug] = useState(true);
+            const [connStatus, setConnStatus] = useState('init'); // init, connecting, connected, receiving, error
             
-            const peer = useRef(null);
+            const peerRef = useRef(null);
             const videoRef = useRef(null);
             const connRef = useRef(null);
-            const callRef = useRef(null);
-
+            
             useEffect(() => {
-                const viewerId = `sc_viewer_${roomName.toUpperCase()}_${slotId}`;
-                const directorId = `sc_director_${roomName.toUpperCase()}`;
+                const myId = `view-${room}-${slot}`;
+                const dirId = `dir-${room}`;
                 
-                setStatus('connecting');
-                setStatusMsg(`Conectando a sala ${roomName}...`);
+                add(`Mi ID: ${myId}`, 'info');
+                add(`Director: ${dirId}`, 'info');
                 
-                console.log('Viewer iniciando:', viewerId);
+                // 1. Crear Peer
+                peerRef.current = new Peer(myId, PEER_CONFIG);
                 
-                peer.current = new Peer(viewerId, PEER_CONFIG);
-                
-                const setupConnection = () => {
-                    // Conexión de datos (señalización)
-                    connRef.current = peer.current.connect(directorId, {
-                        reliable: false,
-                        metadata: { slot: slotId, timestamp: Date.now() }
-                    });
+                peerRef.current.on('open', () => {
+                    add('✅ Peer abierto', 'ok');
+                    setConnStatus('connecting');
                     
-                    connRef.current.on('open', () => {
-                        console.log('Conexión de señal abierta');
-                        setStatus('requesting');
-                        setStatusMsg('Solicitando señal de video...');
-                        setRetryCount(0);
+                    // 2. Conectar al Director (señalización)
+                    add('Conectando al Director...', 'info');
+                    const conn = peerRef.current.connect(dirId, { reliable: false });
+                    connRef.current = conn;
+                    
+                    conn.on('open', () => {
+                        add('✅ Conexión de señal abierta', 'ok');
+                        setConnStatus('connected');
                         
-                        // Solicitar stream explícitamente
-                        connRef.current.send('REQUEST_STREAM');
+                        // 3. Enviar READY
+                        add('Enviando READY_FOR_STREAM...', 'warn');
+                        conn.send('READY_FOR_STREAM');
                         
-                        // Reintentar solicitud cada 3 segundos si no recibimos nada
-                        const requestInterval = setInterval(() => {
-                            if (status !== 'receiving' && connRef.current.open) {
-                                console.log('Re-solicitando stream...');
-                                connRef.current.send('REQUEST_STREAM');
-                                setStatusMsg(`Reintentando solicitud... (${retryCount + 1})`);
-                                setRetryCount(c => c + 1);
-                            } else {
-                                clearInterval(requestInterval);
+                        // Si no recibimos video en 8 segundos, reintentar
+                        setTimeout(() => {
+                            if (!hasVideo && conn.open) {
+                                add('⏳ No se recibió video, re-solicitando...', 'warn');
+                                conn.send('READY_FOR_STREAM');
                             }
-                        }, 3000);
-                        
-                        // Limpiar después de 30 segundos o cuando recibamos
-                        setTimeout(() => clearInterval(requestInterval), 30000);
+                        }, 8000);
                     });
                     
-                    connRef.current.on('close', () => {
-                        console.log('Conexión cerrada');
-                        if (status !== 'receiving') {
-                            setStatus('error');
-                            setStatusMsg('Conexión perdida. Reintentando en 2s...');
-                            setTimeout(setupConnection, 2000);
+                    conn.on('data', data => {
+                        add(`📨 Datos: ${data}`, 'info');
+                        if (data === 'BROADCAST_STARTED' && !hasVideo) {
+                            add('Director inició broadcast, esperando llamada...', 'warn');
                         }
                     });
                     
-                    connRef.current.on('error', (err) => {
-                        console.error('Error conexión:', err);
-                        setStatus('error');
-                        setStatusMsg('Error de conexión');
+                    conn.on('close', () => {
+                        add('❌ Conexión cerrada', 'err');
+                        setConnStatus('error');
                     });
-                };
-                
-                peer.current.on('open', () => {
-                    console.log('Peer abierto, conectando...');
-                    setupConnection();
+                    
+                    conn.on('error', err => {
+                        add(`❌ Error conn: ${err}`, 'err');
+                    });
                 });
                 
-                // Recibir la llamada de media (el stream real)
-                peer.current.on('call', (call) => {
-                    console.log('Llamada entrante del Director!');
-                    setStatus('receiving');
-                    setStatusMsg('Recibiendo señal de video...');
+                // 4. Recibir llamada de Media
+                peerRef.current.on('call', call => {
+                    add('📞 Llamada entrante del Director!', 'ok');
+                    setConnStatus('receiving');
                     
-                    // IMPORTANTE: Responder sin stream local (null)
+                    // Responder sin stream (solo recibir)
                     call.answer(null);
-                    callRef.current = call;
                     
-                    call.on('stream', (remoteStream) => {
-                        console.log('Stream recibido!', remoteStream.id);
+                    call.on('stream', remoteStream => {
+                        add(`✅ Stream recibido! Tracks: ${remoteStream.getTracks().length}`, 'ok');
+                        setHasVideo(true);
                         
                         if (videoRef.current) {
                             videoRef.current.srcObject = remoteStream;
                             
-                            // Forzar play en móviles
-                            const playPromise = videoRef.current.play();
-                            if (playPromise !== undefined) {
-                                playPromise.catch(e => {
-                                    console.log('Autoplay bloqueado, intentando con muted...');
-                                    videoRef.current.muted = true;
-                                    videoRef.current.play().then(() => {
-                                        setTimeout(() => { videoRef.current.muted = false; }, 1000);
-                                    });
+                            // Intentar play
+                            videoRef.current.play().then(() => {
+                                add('▶️ Reproducción iniciada', 'ok');
+                            }).catch(e => {
+                                add(`⚠️ Autoplay bloqueado: ${e.message}`, 'warn');
+                                // Intentar con muted
+                                videoRef.current.muted = true;
+                                videoRef.current.play().then(() => {
+                                    add('▶️ Reproducción con muted (tap para audio)', 'ok');
+                                    setTimeout(() => {
+                                        videoRef.current.muted = false;
+                                        add('🔊 Audio restaurado', 'ok');
+                                    }, 1000);
                                 });
-                            }
-                            
-                            const settings = remoteStream.getVideoTracks()[0]?.getSettings();
-                            setVideoInfo(`${settings?.width}x${settings?.height} | ${Math.round(settings?.frameRate)}fps`);
+                            });
                         }
                     });
                     
-                    call.on('close', () => {
-                        console.log('Llamada cerrada');
-                        setStatus('error');
-                        setStatusMsg('Señal cerrada. Reconectando...');
-                        setTimeout(setupConnection, 2000);
+                    call.on('error', err => {
+                        add(`❌ Error en llamada: ${err}`, 'err');
+                        setConnStatus('error');
                     });
                     
-                    call.on('error', (err) => {
-                        console.error('Error en llamada:', err);
-                        setStatus('error');
-                        setStatusMsg('Error en transmisión');
+                    call.on('close', () => {
+                        add('📴 Llamada cerrada', 'err');
+                        setHasVideo(false);
+                        setConnStatus('connected');
                     });
                 });
                 
-                peer.current.on('error', (err) => {
-                    console.error('Peer error:', err);
+                peerRef.current.on('error', err => {
+                    add(`❌ Peer Error: ${err.type}`, 'err');
                     if (err.type === 'unavailable-id') {
-                        setStatusMsg('ID en uso, recargando...');
+                        add('ID ocupado, recargando...', 'err');
                         setTimeout(() => window.location.reload(), 2000);
                     } else if (err.type === 'peer-unavailable') {
-                        setStatus('error');
-                        setStatusMsg('Director offline. Reintentando...');
-                        setTimeout(setupConnection, 3000);
-                    } else {
-                        setStatus('error');
-                        setStatusMsg(`Error: ${err.type}`);
+                        add('Director no encontrado, reintentando...', 'err');
                     }
                 });
                 
-                // Reconexión periódica si estamos en error
-                const reconnectLoop = setInterval(() => {
-                    if (status === 'error' && peer.current && !connRef.current?.open) {
-                        console.log('Intentando reconectar...');
-                        setupConnection();
-                    }
-                }, 5000);
-                
+                // Cleanup
                 return () => {
-                    clearInterval(reconnectLoop);
-                    callRef.current?.close();
-                    connRef.current?.close();
-                    peer.current?.destroy();
+                    peerRef.current?.destroy();
                 };
-            }, [roomName, slotId, retryCount, status]);
-
-            const requestFullscreen = () => {
-                const elem = document.documentElement;
-                if (elem.requestFullscreen) elem.requestFullscreen();
-                else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+            }, [room, slot]);
+            
+            const manualRequest = () => {
+                if (connRef.current?.open) {
+                    add('Solicitud manual...', 'warn');
+                    connRef.current.send('READY_FOR_STREAM');
+                } else {
+                    add('Sin conexión, recargando página...', 'err');
+                    window.location.reload();
+                }
             };
-
-            const isConnecting = status !== 'receiving';
-
+            
             return (
-                <div className="viewer-layout">
-                    {/* Panel de estado (oculto cuando recibimos video) */}
-                    {isConnecting && (
-                        <div className="status-panel">
-                            <div className="status-icon">
-                                {status === 'connecting' && '⏳'}
-                                {status === 'requesting' && '📡'}
-                                {status === 'error' && '⚠️'}
-                                {status === 'init' && '🚀'}
-                            </div>
-                            
-                            <div className="spinner" style={{display: (status === 'connecting' || status === 'requesting') ? 'block' : 'none', marginBottom: '20px'}}></div>
-                            
-                            <div className="status-title">
-                                {status === 'connecting' && 'CONECTANDO...'}
-                                {status === 'requesting' && 'SOLICITANDO SEÑAL'}
-                                {status === 'error' && 'ERROR DE CONEXIÓN'}
-                            </div>
-                            
-                            <div className="status-desc">
-                                {statusMsg}<br/>
-                                <small style={{color: '#475569', fontSize: '11px', marginTop: '5px', display: 'block'}}>
-                                    Sala: {roomName} | Receptor: #{slotId}
-                                </small>
-                            </div>
-                            
-                            {status === 'error' && (
-                                <button className="btn btn-blue" style={{width: 'auto', padding: '10px 30px'}} onClick={() => window.location.reload()}>
-                                    🔄 RECARGAR PÁGINA
-                                </button>
-                            )}
+                <div className="viewer-container">
+                    <div className={`debug-overlay ${!showDebug && 'collapsed'}`}>
+                        <div className="debug-toggle" onClick={() => setShowDebug(!showDebug)}>
+                            {showDebug ? '▼ OCULTAR LOGS' : '▲ MOSTRAR LOGS'}
                         </div>
+                        <div className="mb-2 font-bold text-blue-400">DEBUG: Sala {room} | Receptor #{slot}</div>
+                        <div style={{lineHeight: '1.4'}}>
+                            {logs.map((l,i) => (
+                                <div key={i} style={{color: 
+                                    l.type === 'ok' ? '#10b981' : 
+                                    l.type === 'err' ? '#ef4444' : 
+                                    l.type === 'warn' ? '#f59e0b' : '#94a3b8',
+                                    marginBottom: '2px'
+                                }}>
+                                    <span className="opacity-50">[{l.t}]</span> {l.msg}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    
+                    <div className="video-container" onClick={() => { if(videoRef.current) videoRef.current.muted = false; }}>
+                        {!hasVideo && (
+                            <div className="status-big">
+                                {connStatus === 'error' ? 
+                                    <div style={{color:'#ef4444', fontWeight:'bold'}}>ERROR<br/><span style={{fontSize:'14px', fontWeight:'normal'}}>Toca abajo para reintentar</span></div> :
+                                    <div className="spinner"></div>
+                                }
+                            </div>
+                        )}
+                        <video 
+                            ref={videoRef} 
+                            className="video-el" 
+                            playsInline 
+                            autoPlay 
+                            muted={false}
+                            style={{opacity: hasVideo ? 1 : 0}}
+                        />
+                    </div>
+                    
+                    {!hasVideo && (
+                        <button onClick={manualRequest} className="action-btn">
+                            {connStatus === 'error' ? '🔁 RECONECTAR' : '⏳ SOLICITAR VIDEO'}
+                        </button>
                     )}
                     
-                    {/* Video (siempre renderizado pero oculto si no hay stream) */}
-                    <video 
-                        ref={videoRef}
-                        className="viewer-video" 
-                        autoPlay 
-                        playsInline 
-                        muted={false}
-                        controls={false}
-                        style={{ 
-                            opacity: status === 'receiving' ? 1 : 0,
-                            width: '100%', 
-                            height: '100%', 
-                            objectFit: 'contain',
-                            background: '#000'
-                        }}
-                    />
-                    
-                    {/* Overlay de info (solo cuando recibimos) */}
-                    {status === 'receiving' && (
-                        <>
-                            <div className="video-overlay">
-                                <div className="video-badge">● EN VIVO</div>
-                                <div className="video-res">{videoInfo}</div>
+                    {hasVideo && (
+                        <div style={{position:'absolute', top:20, right:20, background:'rgba(0,0,0,0.8)', padding:'10px', borderRadius:'8px', zIndex:50}}>
+                            <div style={{color:'#10b981', fontWeight:'bold', fontSize:'14px'}}>● RECIBIENDO</div>
+                            <div style={{color:'#64748b', fontSize:'12px', marginTop:'4px'}}>
+                                {videoRef.current?.srcObject?.getVideoTracks()[0]?.getSettings()?.width}x
+                                {videoRef.current?.srcObject?.getVideoTracks()[0]?.getSettings()?.height}
                             </div>
-                            
-                            <div className="viewer-controls">
-                                <button className="control-btn" onClick={requestFullscreen}>
-                                    ⛶ PANTALLA COMPLETA
-                                </button>
-                            </div>
-                        </>
+                        </div>
                     )}
                 </div>
             );
         };
-
-        // --- ROUTER ---
+        
+        // ==================== APP ====================
         const App = () => {
-            const [appState, setAppState] = useState({ mode: null, room: null, slot: '1' });
-
+            const [state, setState] = useState({mode:null, room:null, slot:null});
+            
             useEffect(() => {
-                const params = new URLSearchParams(window.location.search);
-                const m = params.get('mode'); 
-                const r = params.get('room');
-                const s = params.get('slot') || '1';
+                const p = new URLSearchParams(window.location.search);
+                const m = p.get('mode');
+                const r = p.get('room');
+                const s = p.get('slot');
                 
-                if (m && r) { 
-                    setAppState({ mode: m, room: r, slot: s });
+                if (m === 'director' && r) {
+                    setState({mode:'director', room:r});
+                } else if (m === 'view' && r && s) {
+                    setState({mode:'view', room:r, slot:s});
                 } else {
-                    setAppState({ mode: 'lobby', room: Math.random().toString(36).substring(2, 6).toUpperCase(), slot: '1' });
+                    setState({mode:'lobby', room: Math.random().toString(36).substring(2,6).toUpperCase()});
                 }
             }, []);
-
-            if (appState.mode === 'director') return <DirectorView roomName={appState.room} />;
-            if (appState.mode === 'viewer') return <ViewerView roomName={appState.room} slotId={appState.slot} />;
+            
+            if (state.mode === 'director') return <Director room={state.room} />;
+            if (state.mode === 'view') return <Viewer room={state.room} slot={state.slot} />;
             
             return (
-                <div className="lobby-container">
-                    <div className="glass-box">
-                        <h1 className="text-3xl font-black mb-2 uppercase text-blue-500">STREAM BROADCAST</h1>
-                        <p className="text-gray-400 text-sm mb-6">1 Emisor → 10 Receptores | 16:9 | 720p</p>
-                        
+                <div className="flex items-center justify-center h-screen bg-slate-900">
+                    <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 max-w-md w-full mx-4">
+                        <h1 className="text-2xl font-bold text-blue-400 mb-6 text-center">STREAM P2P</h1>
                         <input 
-                            value={appState.room} 
-                            onChange={(e) => setAppState({...appState, room: e.target.value.toUpperCase()})} 
-                            placeholder="NOMBRE DE SALA" 
+                            value={state.room} 
+                            onChange={e => setState({...state, room: e.target.value.toUpperCase()})}
+                            className="w-full bg-black border-2 border-slate-600 rounded p-3 text-center text-xl font-bold mb-4 text-white uppercase"
+                            placeholder="NOMBRE SALA"
                         />
-                        
                         <button 
-                            className="btn btn-red w-full py-4 text-lg mb-4" 
-                            onClick={() => window.location.href=`?mode=director&room=${appState.room}`}
+                            onClick={() => window.location.href = `?mode=director&room=${state.room}`}
+                            className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-4 rounded-lg text-lg"
                         >
-                            🎬 ABRIR DASHBOARD
+                            🎬 ABRIR COMO DIRECTOR
                         </button>
-                        
-                        <div className="text-xs text-gray-500 text-left">
-                            <p className="font-bold mb-2">CORRECCIONES:</p>
-                            <ul className="list-disc pl-4 space-y-1 text-[11px]">
-                                <li>Sistema de handshake robusto (solicitud explícita)</li>
-                                <li>Captura de pantalla con selector nativo</li>
-                                <li>Reconexión automática cada 3 segundos</li>
-                                <li>Preview en Dashboard garantizado</li>
-                            </ul>
+                        <div className="mt-6 text-slate-400 text-xs text-center">
+                            Versión con logs de debug para diagnóstico de conexión
                         </div>
                     </div>
                 </div>
