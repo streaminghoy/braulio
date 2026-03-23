@@ -9,6 +9,19 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', sans-serif; background: #000; color: #fff; overflow: hidden; }
         
+        /* DEBUG INFO - Visible solo cuando hay problemas */
+        .debug-panel { 
+            position: fixed; bottom: 10px; right: 10px; 
+            background: rgba(0,0,0,0.9); border: 1px solid #ff6b00; 
+            padding: 10px; border-radius: 4px; font-size: 11px; 
+            max-width: 300px; max-height: 200px; overflow-y: auto;
+            z-index: 1000; color: #aaa;
+        }
+        .debug-panel .log { margin: 2px 0; font-family: monospace; }
+        .debug-panel .error { color: #ff0000; }
+        .debug-panel .success { color: #00ff00; }
+        .debug-panel .info { color: #ff6b00; }
+        
         /* MODO EMISOR */
         .broadcast-view { display: none; height: 100vh; flex-direction: column; }
         .broadcast-view.active { display: flex; }
@@ -30,6 +43,7 @@
         button { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; background: #333; color: #fff; border: 2px solid #555; }
         button:hover { border-color: #ff6b00; }
         button.primary { background: #ff6b00; color: #000; border-color: #ff6b00; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; border-color: #333; }
         
         .quality-select { display: flex; gap: 10px; align-items: center; background: #111; padding: 10px; border-radius: 6px; margin-top: 10px; }
         .quality-select label { font-size: 12px; color: #888; }
@@ -41,13 +55,15 @@
         
         .reporter-item { background: #111; border: 1px solid #333; padding: 12px; border-radius: 6px; margin-bottom: 10px; position: relative; }
         .reporter-item.active { border-color: #00ff00; background: #0a1a0a; }
-        .reporter-item.connecting { border-color: #ffff00; animation: blink-border 1.5s infinite; }
-        @keyframes blink-border { 0%, 100% { border-color: #ffff00; } 50% { border-color: #aa8800; } }
+        .reporter-item.connecting { border-color: #ffff00; }
+        .reporter-item.error { border-color: #ff0000; }
         
         .reporter-id { font-family: monospace; color: #00ff00; font-size: 14px; word-break: break-all; }
         .reporter-url { font-size: 10px; color: #666; margin-top: 4px; font-family: monospace; }
         .reporter-status { position: absolute; top: 10px; right: 10px; font-size: 10px; padding: 3px 8px; background: #333; border-radius: 3px; }
         .reporter-status.active { background: #00ff00; color: #000; }
+        .reporter-status.error { background: #ff0000; color: #fff; }
+        .reporter-status.connecting { background: #ffff00; color: #000; }
         
         .input-row { display: flex; gap: 8px; margin-bottom: 10px; }
         input { flex: 1; background: #111; border: 1px solid #444; color: #fff; padding: 10px; border-radius: 4px; font-family: monospace; }
@@ -56,24 +72,22 @@
         .hint { font-size: 11px; color: #666; margin-top: 8px; line-height: 1.4; }
         .bandwidth { background: #111; padding: 10px; border-radius: 4px; font-size: 12px; margin-top: 10px; border-left: 3px solid #00ff00; }
         .bandwidth.warning { border-left-color: #ffff00; }
-        .bandwidth span { color: #00ff00; font-weight: bold; }
         
-        /* MODO RECEPTOR - ULTRA LIMPIO */
+        /* MODO RECEPTOR */
         .receiver-view { display: none; width: 100vw; height: 100vh; background: #000; position: relative; }
         .receiver-view.active { display: flex; }
         .receiver-view video { width: 100%; height: 100%; object-fit: contain; }
         
         .signal-info { 
             position: absolute; top: 20px; left: 20px; 
-            background: rgba(0,0,0,0.7); padding: 15px; border-radius: 6px;
-            border-left: 3px solid #ff6b00; max-width: 250px;
-            opacity: 0.3; transition: opacity 0.3s;
+            background: rgba(0,0,0,0.8); padding: 15px; border-radius: 6px;
+            border-left: 3px solid #ff6b00; max-width: 280px;
+            opacity: 0.9;
         }
-        .signal-info:hover { opacity: 1; }
         .signal-info h4 { color: #ff6b00; font-size: 12px; margin-bottom: 8px; }
         .signal-id { color: #00ff00; font-family: monospace; font-size: 16px; margin-bottom: 5px; }
-        .signal-state { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #aaa; }
-        .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff0000; }
+        .signal-state { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #aaa; margin-top: 5px; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff0000; display: inline-block; }
         .dot.active { background: #00ff00; box-shadow: 0 0 8px #00ff00; }
         .dot.connecting { background: #ffff00; animation: blink 1s infinite; }
         
@@ -85,7 +99,10 @@
         .waiting.hidden { display: none; }
         .spinner { width: 50px; height: 50px; border: 3px solid #222; border-top-color: #ff6b00; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         .waiting p { color: #666; font-size: 14px; }
+        .waiting .error-text { color: #ff0000; font-size: 12px; margin-top: 10px; max-width: 80%; text-align: center; }
+        .waiting button { margin-top: 15px; background: #ff6b00; color: #000; border: none; padding: 8px 16px; cursor: pointer; }
         
         @media (max-width: 900px) {
             .main { grid-template-columns: 1fr; grid-template-rows: auto 300px; }
@@ -95,13 +112,20 @@
 </head>
 <body>
 
-    <!-- MODO EMISOR (se activa si NO hay ?id en URL) -->
+    <!-- DEBUG PANEL -->
+    <div id="debugPanel" class="debug-panel" style="display:none;">
+        <div style="color:#ff6b00;font-weight:bold;margin-bottom:5px;">DEBUG LOG</div>
+        <div id="debugContent"></div>
+    </div>
+
+    <!-- MODO EMISOR -->
     <div id="broadcastView" class="broadcast-view">
         <header>
             <div class="title">📡 RETORNO MASTER</div>
             <div style="display: flex; gap: 15px; align-items: center;">
+                <button onclick="toggleDebug()" style="padding:5px 10px;font-size:11px;">DEBUG</button>
                 <div id="myId" style="font-family: monospace; color: #666; font-size: 12px;"></div>
-                <div id="statusBadge" class="status">STANDBY</div>
+                <div id="statusBadge" class="status">INIT...</div>
             </div>
         </header>
         
@@ -109,38 +133,41 @@
             <div class="left">
                 <div class="preview-box">
                     <video id="localVideo" autoplay muted playsinline></video>
-                    <div class="label">PREVIEW</div>
+                    <div class="label">PREVIEW LOCAL</div>
                 </div>
                 
                 <div class="controls">
-                    <button class="primary" onclick="startSource('vmix')">🎥 Cámara Virtual (vMix/OBS)</button>
+                    <button class="primary" id="btnVmix" onclick="startSource('vmix')">🎥 Cámara Virtual</button>
                     <button onclick="startSource('screen')">🖥️ Pantalla</button>
-                    <button onclick="startSource('camera')">📹 Cámara Web</button>
+                    <button onclick="startSource('camera')">📹 WebCam</button>
                 </div>
                 
                 <div class="quality-select">
                     <label>Calidad:</label>
                     <select id="quality" onchange="changeQuality()">
-                        <option value="360p">360p ~0.5 Mbps (Económico)</option>
+                        <option value="360p">360p ~0.5 Mbps (Máx. reporteros)</option>
                         <option value="480p">480p ~0.8 Mbps (Balance)</option>
-                        <option value="720p">720p ~1.5 Mbps (HD)</option>
+                        <option value="720p">720p ~1.5 Mbps (Alta calidad)</option>
                     </select>
                 </div>
                 
-                <div class="hint">
-                    💡 Comparte la URL completa (con el ID) a cada reportero. Solo necesitan abrir el link y la señal aparece automáticamente.<br>
-                    Ejemplo: <code style="background:#222;padding:2px 4px;">https://tusitio.com/retorno.html?id=REPORTERO1</code>
+                <div class="hint" style="background:#1a0f00;padding:10px;border-left:3px solid #ff6b00;">
+                    <strong>PASOS:</strong><br>
+                    1. Selecciona fuente de video arriba<br>
+                    2. Crea un ID para el reportero (ej: JUAN1)<br>
+                    3. Comparte la URL generada<br>
+                    4. Cuando el reportero abra el link, conecta automáticamente
                 </div>
             </div>
             
             <div class="right">
                 <div class="section">
-                    <h3>➕ Agregar Reportero</h3>
+                    <h3>➕ Nuevo Reportero</h3>
                     <div class="input-row">
-                        <input type="text" id="newId" placeholder="ID (ej: REPORTERO1)" onkeypress="if(event.key==='Enter')addReporter()">
-                        <button class="primary" onclick="addReporter()">Crear</button>
+                        <input type="text" id="newId" placeholder="ID único (ej: JUAN1)" onkeypress="if(event.key==='Enter')addReporter()">
+                        <button class="primary" onclick="addReporter()">CREAR</button>
                     </div>
-                    <div class="hint">Crea un ID único para cada reportero y comparte la URL generada.</div>
+                    <div class="hint">Usa IDs simples sin espacios. Ej: CAM1, JUAN, LOCUTOR2</div>
                 </div>
                 
                 <div class="section">
@@ -150,32 +177,56 @@
                 
                 <div class="bandwidth" id="bwInfo">
                     Uso estimado: <span>0 Mbps</span><br>
-                    <span style="color:#666;font-weight:normal;">0 reporteros × 0.5 Mbps</span>
+                    <span style="color:#666;font-size:11px;">0 reporteros × 0.5 Mbps</span>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- MODO RECEPTOR (se activa automáticamente con ?id=XXX) -->
+    <!-- MODO RECEPTOR -->
     <div id="receiverView" class="receiver-view">
         <div id="waitingScreen" class="waiting">
             <div class="spinner"></div>
-            <p>Esperando señal...</p>
-            <p style="font-size:12px;margin-top:10px;color:#444;" id="myReceiverId"></p>
+            <p id="waitText">Iniciando conexión P2P...</p>
+            <p class="error-text" id="errorText" style="display:none;"></p>
+            <button id="retryBtn" style="display:none;" onclick="location.reload()">Reintentar</button>
         </div>
-        <video id="remoteVideo" autoplay playsinline></video>
+        
+        <video id="remoteVideo" autoplay playsinline style="display:none;"></video>
+        
         <div class="signal-info">
-            <h4>SEÑAL DE RETORNO</h4>
-            <div class="signal-id" id="displayId">--</div>
+            <h4>ID: <span id="displayId">--</span></h4>
             <div class="signal-state">
-                <div class="dot" id="signalDot"></div>
-                <span id="signalText">Conectando...</span>
+                <div id="signalDot" class="dot"></div>
+                <span id="signalText">Iniciando...</span>
+            </div>
+            <div style="margin-top:8px;font-size:10px;color:#666;">
+                ICE: <span id="iceStatus">--</span> | Retry: <span id="retryCount">0</span>
             </div>
         </div>
     </div>
 
     <script>
-        // Detectar modo automáticamente
+        // Sistema de logging debug
+        const debugLogs = [];
+        function log(msg, type='info') {
+            const time = new Date().toLocaleTimeString();
+            const line = `[${time}] ${msg}`;
+            debugLogs.push({type, msg: line});
+            if (debugLogs.length > 20) debugLogs.shift();
+            
+            const panel = document.getElementById('debugContent');
+            if (panel) {
+                panel.innerHTML = debugLogs.map(l => `<div class="log ${l.type}">${l.msg}</div>`).join('');
+            }
+            console.log(line);
+        }
+        function toggleDebug() {
+            const p = document.getElementById('debugPanel');
+            p.style.display = p.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        // Detectar modo
         const urlParams = new URLSearchParams(window.location.search);
         const receiverId = urlParams.get('id');
         
@@ -183,42 +234,61 @@
         let localStream = null;
         let connections = new Map();
         let currentQuality = '360p';
+        let retryAttempts = 0;
+        const MAX_RETRIES = 30; // 2.5 minutos de reintentos
         
         const qualitySettings = {
-            '360p': { video: { width: 640, height: 360, frameRate: 25 }, audio: { sampleRate: 22050, channelCount: 1 }, bitrate: 0.5 },
-            '480p': { video: { width: 854, height: 480, frameRate: 30 }, audio: { sampleRate: 22050, channelCount: 1 }, bitrate: 0.8 },
-            '720p': { video: { width: 1280, height: 720, frameRate: 30 }, audio: { sampleRate: 44100, channelCount: 1 }, bitrate: 1.5 }
+            '360p': { video: { width: 640, height: 360, frameRate: 20 }, audio: true, bitrate: 0.5 },
+            '480p': { video: { width: 854, height: 480, frameRate: 25 }, audio: true, bitrate: 0.8 },
+            '720p': { video: { width: 1280, height: 720, frameRate: 30 }, audio: true, bitrate: 1.5 }
         };
         
         if (receiverId) {
-            // MODO RECEPTOR AUTOMÁTICO
             document.getElementById('receiverView').classList.add('active');
             document.getElementById('displayId').textContent = receiverId;
-            document.getElementById('myReceiverId').textContent = 'ID: ' + receiverId;
+            log('Modo RECEPTOR detectado. ID: ' + receiverId);
             initReceiver(receiverId);
         } else {
-            // MODO EMISOR
             document.getElementById('broadcastView').classList.add('active');
+            log('Modo EMISOR detectado');
             initBroadcast();
         }
         
-        // ==================== MODO EMISOR ====================
+        // ==================== EMISOR ====================
         function initBroadcast() {
             const masterId = 'MASTER_' + Math.random().toString(36).substr(2, 6).toUpperCase();
-            document.getElementById('myId').textContent = 'MASTER ID: ' + masterId;
+            document.getElementById('myId').textContent = 'ID: ' + masterId;
+            log('Creando Peer como: ' + masterId);
             
             peer = new Peer(masterId, {
                 host: '0.peerjs.com',
                 port: 443,
-                secure: true
+                secure: true,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                }
             });
             
-            peer.on('open', () => {
-                updateStatus('LISTO');
+            peer.on('open', (id) => {
+                log('✓ Conectado a PeerJS server. ID: ' + id, 'success');
+                updateStatus('LISTO - Selecciona fuente');
+            });
+            
+            peer.on('error', (err) => {
+                log('ERROR PeerJS: ' + err.type + ' - ' + err.message, 'error');
+                updateStatus('ERROR: ' + err.type);
+            });
+            
+            peer.on('connection', (conn) => {
+                log('Data connection desde: ' + conn.peer);
             });
         }
         
         async function startSource(type) {
+            log('Solicitando fuente: ' + type);
             try {
                 const settings = qualitySettings[currentQuality];
                 let stream;
@@ -228,88 +298,155 @@
                         video: { width: 1280, height: 720, frameRate: 30 },
                         audio: true
                     });
-                    // Intentar limitar
-                    const track = stream.getVideoTracks()[0];
-                    if(track.applyConstraints) {
-                        try { await track.applyConstraints(settings.video); } catch(e){}
-                    }
-                } else {
+                    log('✓ Pantalla compartida obtenida', 'success');
+                    
+                    stream.getVideoTracks()[0].onended = () => {
+                        log('Pantalla compartida detenida por usuario');
+                        localStream = null;
+                        document.getElementById('localVideo').srcObject = null;
+                        updateStatus('FUENTE DETENIDA');
+                    };
+                } else if (type === 'vmix' || type === 'camera') {
                     stream = await navigator.mediaDevices.getUserMedia({
                         video: settings.video,
                         audio: settings.audio
                     });
+                    log('✓ Cámara obtenida: ' + stream.getVideoTracks()[0].label, 'success');
                 }
                 
                 localStream = stream;
                 document.getElementById('localVideo').srcObject = stream;
                 updateStatus('TRANSMITIENDO');
                 
-                // Reconectar a existentes si hay cambio de fuente
+                // Reconectar a todos los reporteros pendientes
                 reconnectAll();
                 
             } catch (err) {
-                alert('Error: ' + err.message);
+                log('✗ Error obteniendo fuente: ' + err.message, 'error');
+                alert('Error accediendo a cámara/pantalla: ' + err.message);
             }
         }
         
         function changeQuality() {
             currentQuality = document.getElementById('quality').value;
+            log('Calidad cambiada a: ' + currentQuality);
             updateBandwidth();
-            if (localStream) startSource('vmix'); // refrescar
         }
         
         function addReporter() {
-            const id = document.getElementById('newId').value.trim().toUpperCase();
-            if (!id) return;
-            if (connections.has(id)) return alert('Ya existe');
+            const id = document.getElementById('newId').value.trim().toUpperCase().replace(/[^A-Z0-9_-]/gi, '');
+            if (!id) return alert('Ingresa un ID');
+            if (connections.has(id)) return alert('Este ID ya existe');
             
-            // Generar URL para compartir
             const url = window.location.origin + window.location.pathname + '?id=' + id;
+            log('Creando reportero: ' + id);
             
             const conn = {
                 id: id,
                 url: url,
                 call: null,
-                status: 'standby'
+                status: 'standby',
+                retries: 0
             };
             
             connections.set(id, conn);
             renderReporters();
             document.getElementById('newId').value = '';
             
-            // Intentar conectar inmediatamente si hay fuente lista
-            if (localStream) connectToReporter(id);
+            // Intentar conectar inmediatamente si hay stream
+            if (localStream) {
+                connectToReporter(id);
+            } else {
+                log('⚠ No hay fuente de video aún. Conectará automáticamente cuando selecciones fuente.');
+            }
         }
         
         function connectToReporter(id) {
-            if (!localStream || !peer) return;
+            if (!localStream || !peer) {
+                log('No se puede conectar a ' + id + ': sin stream o peer');
+                return;
+            }
             
             const conn = connections.get(id);
-            if (!conn || conn.call) return; // ya conectado
+            if (!conn || conn.call) return;
             
+            log('Llamando a: ' + id + '...');
             conn.status = 'connecting';
             renderReporters();
             
-            const call = peer.call(id, localStream);
-            conn.call = call;
-            
-            call.on('stream', () => {
-                // No usamos el stream de vuelta (unidireccional)
-            });
-            
-            call.on('close', () => {
-                conn.status = 'disconnected';
-                conn.call = null;
-                renderReporters();
-            });
-            
-            // Simular conexión exitosa después de 2 segundos (WebRTC es P2P, no hay "conectado" exacto en mediaConn)
-            setTimeout(() => {
-                if (conn.call && connections.has(id)) {
-                    conn.status = 'active';
+            try {
+                const call = peer.call(id, localStream);
+                if (!call) {
+                    log('✗ peer.call() retornó null para ' + id, 'error');
+                    conn.status = 'error';
                     renderReporters();
+                    return;
                 }
-            }, 2000);
+                
+                conn.call = call;
+                
+                // Monitorear estado de la conexión WebRTC
+                if (call.peerConnection) {
+                    call.peerConnection.oniceconnectionstatechange = () => {
+                        const state = call.peerConnection.iceConnectionState;
+                        log(id + ' ICE State: ' + state);
+                        if (state === 'connected' || state === 'completed') {
+                            conn.status = 'active';
+                            renderReporters();
+                        } else if (state === 'failed' || state === 'disconnected') {
+                            conn.status = 'error';
+                            renderReporters();
+                        }
+                    };
+                }
+                
+                call.on('stream', (remoteStream) => {
+                    log(id + ' respondió con stream (should be empty for recvonly)', 'success');
+                });
+                
+                call.on('close', () => {
+                    log(id + ' cerró conexión');
+                    conn.call = null;
+                    conn.status = 'disconnected';
+                    renderReporters();
+                    
+                    // Auto-reintento después de 3 segundos
+                    if (localStream) {
+                        setTimeout(() => connectToReporter(id), 3000);
+                    }
+                });
+                
+                call.on('error', (err) => {
+                    log('Error en llamada a ' + id + ': ' + err.message, 'error');
+                    conn.status = 'error';
+                    conn.call = null;
+                    renderReporters();
+                });
+                
+                // Timeout de conexión (10 segundos)
+                setTimeout(() => {
+                    if (conn.status === 'connecting') {
+                        log(id + ' timeout de conexión (10s)', 'error');
+                        conn.status = 'error';
+                        if (conn.call) conn.call.close();
+                        conn.call = null;
+                        renderReporters();
+                    }
+                }, 10000);
+                
+            } catch (err) {
+                log('✗ Excepción llamando a ' + id + ': ' + err.message, 'error');
+                conn.status = 'error';
+                renderReporters();
+            }
+        }
+        
+        function reconnectAll() {
+            connections.forEach((conn, id) => {
+                if (!conn.call && conn.status !== 'active') {
+                    connectToReporter(id);
+                }
+            });
         }
         
         function removeReporter(id) {
@@ -317,12 +454,7 @@
             if (conn?.call) conn.call.close();
             connections.delete(id);
             renderReporters();
-        }
-        
-        function reconnectAll() {
-            connections.forEach((conn, id) => {
-                if (!conn.call) connectToReporter(id);
-            });
+            updateBandwidth();
         }
         
         function renderReporters() {
@@ -331,13 +463,14 @@
             
             connections.forEach(conn => {
                 const div = document.createElement('div');
-                div.className = 'reporter-item ' + (conn.status === 'active' ? 'active' : conn.status === 'connecting' ? 'connecting' : '');
+                div.className = 'reporter-item ' + (conn.status === 'active' ? 'active' : conn.status === 'connecting' ? 'connecting' : conn.status === 'error' ? 'error' : '');
                 
                 div.innerHTML = `
                     <div class="reporter-id">${conn.id}</div>
-                    <div class="reporter-url">${conn.url}</div>
+                    <div class="reporter-url"><a href="${conn.url}" target="_blank" style="color:#666;">${conn.url}</a></div>
                     <div class="reporter-status ${conn.status}">${conn.status.toUpperCase()}</div>
                     <button onclick="removeReporter('${conn.id}')" style="position:absolute;top:10px;right:80px;background:#ff0000;color:#fff;border:none;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:10px;">X</button>
+                    ${conn.status === 'error' ? `<button onclick="connectToReporter('${conn.id}')" style="position:absolute;top:10px;right:120px;background:#ff6b00;color:#000;border:none;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:10px;">↻</button>` : ''}
                 `;
                 list.appendChild(div);
             });
@@ -350,55 +483,141 @@
             const count = connections.size;
             const bitrate = qualitySettings[currentQuality].bitrate;
             const total = (count * bitrate).toFixed(1);
-            
-            const div = document.getElementById('bwInfo');
-            div.innerHTML = `Uso estimado: <span>${total} Mbps</span><br>
-                            <span style="color:#666;font-weight:normal;">${count} reporteros × ${bitrate} Mbps</span>`;
-            
-            div.className = 'bandwidth ' + (total > 10 ? 'warning' : '');
+            document.getElementById('bwInfo').innerHTML = `Uso estimado: <span>${total} Mbps</span><br><span style="color:#666;font-size:11px;">${count} reporteros × ${bitrate} Mbps</span>`;
         }
         
         function updateStatus(text) {
             const badge = document.getElementById('statusBadge');
             badge.textContent = text;
-            badge.className = 'status ' + (text === 'TRANSMITIENDO' ? 'live' : '');
+            badge.className = 'status ' + (text.includes('TRANSMITIENDO') ? 'live' : '');
         }
         
-        // ==================== MODO RECEPTOR ====================
+        // ==================== RECEPTOR ====================
         function initReceiver(myId) {
+            log('Iniciando receptor con ID: ' + myId);
+            
             peer = new Peer(myId, {
                 host: '0.peerjs.com',
                 port: 443,
-                secure: true
+                secure: true,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                }
             });
             
-            peer.on('open', () => {
-                updateSignal('waiting', 'Listo para recibir...');
-            });
-            
-            peer.on('call', (call) => {
-                // Contestar sin enviar nada (unidireccional)
-                call.answer(null);
-                
-                updateSignal('connecting', 'Recibiendo señal...');
-                
-                call.on('stream', (stream) => {
-                    const video = document.getElementById('remoteVideo');
-                    video.srcObject = stream;
-                    document.getElementById('waitingScreen').classList.add('hidden');
-                    updateSignal('active', 'Retorno activo');
-                });
-                
-                call.on('close', () => {
-                    updateSignal('disconnected', 'Señal cortada');
-                    document.getElementById('waitingScreen').classList.remove('hidden');
-                });
+            peer.on('open', (id) => {
+                log('✓ Peer listo: ' + id, 'success');
+                updateSignal('waiting', 'Esperando llamada del operador...');
+                startRetrySystem();
             });
             
             peer.on('error', (err) => {
-                console.error(err);
-                updateSignal('error', 'Error: ' + err.type);
+                log('✗ Error PeerJS: ' + err.type, 'error');
+                if (err.type === 'unavailable-id') {
+                    updateSignal('error', 'ID ya en uso. Recarga la página.');
+                    showError('Este ID ya está siendo usado por otro dispositivo. Usa un ID diferente.');
+                } else {
+                    updateSignal('error', 'Error de conexión');
+                }
             });
+            
+            peer.on('call', (call) => {
+                log('📞 Llamada entrante de: ' + call.peer);
+                updateSignal('connecting', 'Recibiendo señal...');
+                
+                // Contestar sin enviar nuestro stream (recvonly)
+                call.answer(null);
+                
+                // Monitorear ICE state
+                if (call.peerConnection) {
+                    call.peerConnection.oniceconnectionstatechange = () => {
+                        const state = call.peerConnection.iceConnectionState;
+                        log('ICE State: ' + state);
+                        document.getElementById('iceStatus').textContent = state;
+                    };
+                }
+                
+                call.on('stream', (stream) => {
+                    log('✓ Stream recibido!', 'success');
+                    gotStream(stream);
+                });
+                
+                call.on('close', () => {
+                    log('Llamada cerrada');
+                    lostConnection();
+                });
+                
+                call.on('error', (err) => {
+                    log('Error en llamada: ' + err.message, 'error');
+                    lostConnection();
+                });
+            });
+            
+            peer.on('disconnected', () => {
+                log('Desconectado del servidor, reintentando...');
+                peer.reconnect();
+            });
+        }
+        
+        function gotStream(stream) {
+            const video = document.getElementById('remoteVideo');
+            video.srcObject = stream;
+            video.style.display = 'block';
+            document.getElementById('waitingScreen').classList.add('hidden');
+            updateSignal('active', 'Retorno activo ✓');
+            
+            // Verificar que haya video real
+            const checkVideo = setInterval(() => {
+                if (video.videoWidth > 0) {
+                    log('✓ Video detectado: ' + video.videoWidth + 'x' + video.videoHeight, 'success');
+                    clearInterval(checkVideo);
+                }
+            }, 1000);
+            
+            // Detectar si el stream se corta
+            stream.getVideoTracks().forEach(track => {
+                track.onended = () => {
+                    log('Track de video finalizado');
+                    lostConnection();
+                };
+            });
+        }
+        
+        function lostConnection() {
+            document.getElementById('remoteVideo').style.display = 'none';
+            document.getElementById('waitingScreen').classList.remove('hidden');
+            updateSignal('disconnected', 'Señal perdida - Reintentando...');
+            retryAttempts = 0;
+            startRetrySystem();
+        }
+        
+        function startRetrySystem() {
+            // Reintentos periódicos por si el operador aún no inició
+            const retryInterval = setInterval(() => {
+                if (document.getElementById('remoteVideo').style.display === 'block') {
+                    clearInterval(retryInterval);
+                    return;
+                }
+                
+                retryAttempts++;
+                document.getElementById('retryCount').textContent = retryAttempts;
+                
+                if (retryAttempts > MAX_RETRIES) {
+                    clearInterval(retryInterval);
+                    showError('Tiempo de espera agotado. El operador no se conectó en 2.5 minutos.');
+                    return;
+                }
+                
+                // Cada 5 segundos intentar reconectar al servidor si es necesario
+                if (retryAttempts % 5 === 0 && peer.disconnected) {
+                    log('Reconectando a servidor...');
+                    peer.reconnect();
+                }
+                
+            }, 5000); // Cada 5 segundos
         }
         
         function updateSignal(state, text) {
@@ -407,6 +626,14 @@
             
             dot.className = 'dot ' + state;
             txt.textContent = text;
+            log('Estado: ' + text);
+        }
+        
+        function showError(msg) {
+            document.getElementById('errorText').textContent = msg;
+            document.getElementById('errorText').style.display = 'block';
+            document.getElementById('retryBtn').style.display = 'inline-block';
+            document.querySelector('.spinner').style.display = 'none';
         }
     </script>
 </body>
