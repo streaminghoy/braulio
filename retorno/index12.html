@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retorno P2P - Anti-Errores</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        body { background: #000; color: #fff; overflow: hidden; }
+        
+        /* Pantalla de carga/error robusta */
+        .loading-screen { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: #000; display: flex; flex-direction: column; 
+            align-items: center; justify-content: center; z-index: 9999;
+            padding: 20px; text-align: center;
+        }
+        .loading-screen.hidden { display: none; }
+        
+        .big-spinner { width: 60px; height: 60px; border: 4px solid #222; border-top-color: #ff6b00; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .status-big { font-size: 24px; font-weight: bold; color: #fff; margin-bottom: 10px; }
+        .status-small { font-size: 14px; color: #888; max-width: 400px; line-height: 1.4; }
+        .retry-count { color: #ff6b00; margin-top: 10px; font-size: 12px; }
+        
+        .error-box { background: rgba(255,0,0,0.2); border: 2px solid #ff0000; padding: 20px; border-radius: 10px; margin-top: 20px; max-width: 90%; }
+        .error-box h3 { color: #ff5555; margin-bottom: 10px; }
+        .btn-big { background: #ff6b00; color: #000; border: none; padding: 15px 30px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 15px; }
+        .btn-big:active { transform: scale(0.95); }
+        
+        /* Layout normal */
+        .app { display: none; height: 100vh; flex-direction: column; }
+        .app.active { display: flex; }
+        
+        header { background: #111; padding: 15px; border-bottom: 2px solid #ff6b00; display: flex; justify-content: space-between; align-items: center; }
+        h1 { color: #ff6b00; font-size: 18px; }
+        
+        .content { flex: 1; overflow-y: auto; padding: 20px; max-width: 900px; margin: 0 auto; width: 100%; }
+        .card { background: #141414; border: 1px solid #333; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+        
+        .preview { background: #000; border-radius: 8px; aspect-ratio: 16/9; margin-bottom: 15px; position: relative; overflow: hidden; border: 2px solid #333; }
+        .preview video { width: 100%; height: 100%; object-fit: contain; }
+        .res-badge { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.8); color: #0f0; padding: 4px 8px; border-radius: 4px; font-size: 11px; display: none; }
+        
+        .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
+        button { padding: 12px 20px; border: none; border-radius: 6px; background: #2a2a2a; color: #fff; cursor: pointer; font-weight: 600; font-size: 14px; }
+        button:disabled { opacity: 0.4; }
+        button.primary { background: #ff6b00; color: #000; }
+        button.active { border: 2px solid #ff6b00; background: #2a1f0f; }
+        
+        input { width: 100%; padding: 12px; background: #0f0f0f; border: 1px solid #444; color: #fff; border-radius: 6px; margin-bottom: 10px; font-family: monospace; font-size: 14px; }
+        
+        .rep-item { background: #0f0f0f; border: 1px solid #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
+        .rep-id { color: #0f0; font-family: monospace; font-weight: bold; font-size: 16px; }
+        .rep-url { font-size: 11px; color: #666; word-break: break-all; margin: 8px 0; background: #1a1a1a; padding: 8px; border-radius: 4px; }
+        .rep-status { font-size: 12px; color: #888; margin-top: 5px; }
+        .rep-status.ok { color: #0f0; }
+        
+        /* Receptor */
+        .receiver-app { display: none; width: 100vw; height: 100vh; position: relative; }
+        .receiver-app.active { display: block; }
+        #remoteVideo { width: 100%; height: 100%; object-fit: contain; }
+        
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .overlay.hidden { display: none; }
+        
+        .top-bar { position: absolute; top: 0; left: 0; width: 100%; padding: 20px; background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent); display: flex; justify-content: space-between; pointer-events: none; }
+        .top-bar > * { pointer-events: auto; }
+        .id-box { background: rgba(0,0,0,0.7); padding: 10px 15px; border-radius: 8px; border-left: 3px solid #ff6b00; }
+        .id-box small { color: #ff6b00; font-size: 10px; text-transform: uppercase; display: block; margin-bottom: 2px; }
+        .id-box big { color: #0f0; font-family: monospace; font-size: 18px; font-weight: bold; }
+        
+        .btn-fs { position: absolute; bottom: 30px; right: 30px; width: 60px; height: 60px; border-radius: 50%; background: #ff6b00; border: none; color: #000; font-size: 24px; cursor: pointer; z-index: 5; }
+    </style>
+</head>
+<body>
+
+    <!-- Pantalla de carga con reintentos -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="big-spinner" id="loader"></div>
+        <div class="status-big" id="loadingTitle">Conectando...</div>
+        <div class="status-small" id="loadingDesc">Estableciendo conexión segura con el servidor P2P</div>
+        <div class="retry-count" id="retryText">Intento 1/10</div>
+        
+        <div id="errorContainer" style="display: none; margin-top: 20px;">
+            <div class="error-box">
+                <h3>⚠️ Problema de conexión</h3>
+                <p id="errorMsg">El servidor está saturado o tu red bloquea la conexión.</p>
+                <button class="btn-big" onclick="location.reload()">🔄 Recargar Página</button>
+                <button class="btn-big" onclick="changeServer()" style="background: #333; color: #fff; margin-left: 10px;">Cambiar Servidor</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EMISOR -->
+    <div id="broadcast" class="app">
+        <header>
+            <h1>📡 EMISOR</h1>
+            <div id="netStatus" style="font-size: 12px; color: #666;">Conectando...</div>
+        </header>
+        
+        <div class="content">
+            <div class="card">
+                <div class="preview">
+                    <video id="localVideo" autoplay muted playsinline></video>
+                    <div id="resBadge" class="res-badge">--</div>
+                </div>
+                
+                <div class="btn-row">
+                    <button onclick="startCam('vmix')" id="btn-vmix">🎥 vMix/OBS</button>
+                    <button onclick="startCam('screen')" id="btn-screen">🖥️ Pantalla</button>
+                    <button onclick="startCam('cam')" id="btn-cam">📷 Cámara</button>
+                    <button onclick="cycleQuality()" id="btn-q" style="margin-left: auto; background: #1a1a1a;">⚙️ 360p</button>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3 style="color: #ff6b00; margin-bottom: 15px;">Agregar Reportero</h3>
+                <input type="text" id="repId" placeholder="Ej: JUAN1" onkeypress="if(event.key==='Enter')addRep()">
+                <button class="primary" onclick="addRep()" id="btnAdd" style="width: 100%;" disabled>CREAR</button>
+                
+                <div id="repList" style="margin-top: 20px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RECEPTOR -->
+    <div id="receiver" class="receiver-app">
+        <video id="remoteVideo" autoplay playsinline></video>
+        
+        <div id="recvOverlay" class="overlay">
+            <div class="big-spinner"></div>
+            <div style="color: #fff; font-size: 20px; font-weight: bold; margin-bottom: 10px;">Esperando señal...</div>
+            <div style="color: #666; font-size: 14px;">Mantén esta pantalla abierta</div>
+        </div>
+        
+        <div class="top-bar">
+            <div class="id-box">
+                <small>MI ID</small>
+                <big id="dispId">--</big>
+            </div>
+        </div>
+        
+        <button class="btn-fs" onclick="toggleFs()">⛶</button>
+    </div>
+
+    <script>
+        // Configuración de servidores (fallbacks)
+        const SERVERS = [
+            { host: '0.peerjs.com', port: 443, secure: true }, // Principal
+            { host: 'peerjs.com', port: 443, secure: true },   // Alternativo
+            // Si tienes tu propio servidor, agrégalo aquí:
+            // { host: 'tu-servidor.com', port: 9000, secure: true }
+        ];
+        let currentServer = 0;
+        
+        const qualities = {
+            '360p': { w: 640, h: 360, fps: 20 },
+            '480p': { w: 854, h: 480, fps: 25 },
+            '720p': { w: 1280, h: 720, fps: 30 }
+        };
+        let currQ = '360p';
+        let localStream = null;
+        let peer = null;
+        let reps = [];
+        let retries = 0;
+        const MAX_RETRIES = 10;
+        let isReceiver = false;
+        let myId = null;
+        
+        // Inicialización segura
+        window.onload = function() {
+            const params = new URLSearchParams(location.search);
+            isReceiver = params.has('id');
+            myId = params.get('id');
+            
+            if (isReceiver) {
+                document.getElementById('dispId').textContent = myId;
+                initReceiverSafe();
+            } else {
+                initBroadcastSafe();
+            }
+        };
+        
+        // Función de conexión con reintentos
+        function initBroadcastSafe() {
+            const server = SERVERS[currentServer];
+            const peerId = 'M-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+            
+            updateLoading(`Conectando al servidor ${currentServer + 1}/${SERVERS.length}...`, `Intento ${retries + 1}/${MAX_RETRIES}`);
+            
+            peer = new Peer(peerId, {
+                host: server.host,
+                port: server.port,
+                secure: server.secure,
+                debug: 1
+            });
+            
+            peer.on('open', () => {
+                console.log('Conectado:', peerId);
+                hideLoading();
+                document.getElementById('broadcast').classList.add('active');
+                document.getElementById('netStatus').textContent = '✓ Online (' + peerId + ')';
+                document.getElementById('btnAdd').disabled = false;
+            });
+            
+            peer.on('error', err => {
+                console.error('Error:', err.type, err.message);
+                handleError(err, 'broadcast');
+            });
+        }
+        
+        function initReceiverSafe() {
+            const server = SERVERS[currentServer];
+            updateLoading('Iniciando receptor...', 'Conectando al servidor P2P');
+            
+            peer = new Peer(myId, {
+                host: server.host,
+                port: server.port,
+                secure: server.secure,
+                debug: 1
+            });
+            
+            peer.on('open', () => {
+                console.log('Receptor listo:', myId);
+                hideLoading();
+                document.getElementById('receiver').classList.add('active');
+                setupReceiver();
+            });
+            
+            peer.on('error', err => {
+                console.error('Error receptor:', err);
+                handleError(err, 'receiver');
+            });
+        }
+        
+        function handleError(err, mode) {
+            if (err.type === 'network' || err.type === 'disconnected' || err.type === 'socket-error') {
+                retries++;
+                if (retries < MAX_RETRIES) {
+                    updateLoading(
+                        `Reintentando conexión...`, 
+                        `El servidor no responde. Intento ${retries}/${MAX_RETRIES}`,
+                        true
+                    );
+                    
+                    // Destruir peer anterior si existe
+                    if (peer) {
+                        try { peer.destroy(); } catch(e){}
+                    }
+                    
+                    // Reintentar en 2 segundos
+                    setTimeout(() => {
+                        if (mode === 'broadcast') initBroadcastSafe();
+                        else initReceiverSafe();
+                    }, 2000);
+                    
+                } else {
+                    // Agotados reintentos
+                    showErrorScreen(
+                        'No se pudo conectar después de ' + MAX_RETRIES + ' intentos.',
+                        'El servidor PeerJS gratuito puede estar caído o tu red (firewall/empresa) bloquea WebSockets. Intenta usar datos móviles o recarga en unos minutos.'
+                    );
+                }
+            } else if (err.type === 'unavailable-id') {
+                showErrorScreen(
+                    'ID ya está en uso',
+                    'El ID "' + myId + '" ya está siendo usado por otro dispositivo. Cierra esta página y usa otro ID en la URL (ej: ?id=JUAN2)'
+                );
+            } else {
+                showErrorScreen('Error: ' + err.type, err.message || 'Error desconocido');
+            }
+        }
+        
+        function updateLoading(title, desc, isRetry = false) {
+            document.getElementById('loadingTitle').textContent = title;
+            document.getElementById('loadingDesc').textContent = desc;
+            document.getElementById('retryText').textContent = isRetry ? `Esperando... (${retries}/${MAX_RETRIES})` : '';
+            document.getElementById('loadingScreen').classList.remove('hidden');
+        }
+        
+        function hideLoading() {
+            document.getElementById('loadingScreen').classList.add('hidden');
+        }
+        
+        function showErrorScreen(title, desc) {
+            document.getElementById('loader').style.display = 'none';
+            document.getElementById('loadingTitle').textContent = 'Error de Conexión';
+            document.getElementById('loadingDesc').textContent = title;
+            document.getElementById('retryText').style.display = 'none';
+            document.getElementById('errorContainer').style.display = 'block';
+            document.getElementById('errorMsg').textContent = desc;
+        }
+        
+        function changeServer() {
+            currentServer = (currentServer + 1) % SERVERS.length;
+            retries = 0;
+            location.reload();
+        }
+        
+        // ==================== EMISOR ====================
+        async function startCam(type) {
+            try {
+                if (localStream && currCam !== type) {
+                    localStream.getTracks().forEach(t => t.stop());
+                    localStream = null;
+                }
+                currCam = type;
+                
+                const q = qualities[currQ];
+                document.querySelectorAll('.btn-row button').forEach(b => b.classList.remove('active'));
+                document.getElementById('btn-' + type).classList.add('active');
+                
+                if (type === 'screen') {
+                    localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+                } else {
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: q.w, height: q.h, frameRate: q.fps },
+                        audio: true
+                    });
+                }
+                
+                document.getElementById('localVideo').srcObject = localStream;
+                const s = localStream.getVideoTracks()[0].getSettings();
+                document.getElementById('resBadge').textContent = s.width + 'x' + s.height;
+                document.getElementById('resBadge').style.display = 'block';
+                
+                // Reconectar a todos
+                reps.forEach(r => {
+                    if (r.call) { try { r.call.close(); } catch(e){} r.call = null; }
+                    callRep(r);
+                });
+                
+            } catch(e) {
+                alert('Error cámara: ' + e.message);
+            }
+        }
+        let currCam = null;
+        
+        function cycleQuality() {
+            const qs = Object.keys(qualities);
+            const i = qs.indexOf(currQ);
+            currQ = qs[(i + 1) % qs.length];
+            document.getElementById('btn-q').textContent = '⚙️ ' + currQ;
+            if (currCam) startCam(currCam);
+        }
+        
+        function addRep() {
+            const id = document.getElementById('repId').value.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+            if (!id) return;
+            if (reps.find(r => r.id === id)) return alert('Ya existe');
+            
+            const url = location.origin + location.pathname + '?id=' + id;
+            const rep = { id, url, call: null };
+            reps.push(rep);
+            
+            render();
+            document.getElementById('repId').value = '';
+            if (localStream) callRep(rep);
+        }
+        
+        function callRep(rep) {
+            if (!localStream || !peer) return;
+            
+            rep.status = 'conectando...';
+            render();
+            
+            try {
+                const call = peer.call(rep.id, localStream);
+                rep.call = call;
+                
+                call.on('stream', () => {
+                    rep.status = '✓ conectado';
+                    render();
+                });
+                
+                call.on('close', () => {
+                    rep.call = null;
+                    rep.status = 'esperando...';
+                    render();
+                });
+                
+            } catch(e) {
+                rep.status = 'error';
+                render();
+            }
+        }
+        
+        function render() {
+            const div = document.getElementById('repList');
+            if (!reps.length) { div.innerHTML = ''; return; }
+            
+            div.innerHTML = reps.map(r => `
+                <div class="rep-item">
+                    <div class="rep-id">${r.id}</div>
+                    <div class="rep-url">${r.url}</div>
+                    <div class="rep-status ${r.status && r.status.includes('✓') ? 'ok' : ''}">${r.status || 'esperando'}</div>
+                    <div style="margin-top: 10px; display: flex; gap: 8px;">
+                        <button onclick="copy('${r.url}')" style="font-size: 12px; padding: 6px 12px;">📋 Copiar</button>
+                        ${r.status !== '✓ conectado' ? `<button onclick="callRep(reps.find(x => x.id === '${r.id}'))" style="font-size: 12px; padding: 6px 12px; background: #0088ff;">↻ Conectar</button>` : ''}
+                        <button onclick="del('${r.id}')" style="font-size: 12px; padding: 6px 12px; background: #f00; margin-left: auto;">×</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function del(id) {
+            reps = reps.filter(r => r.id !== id);
+            render();
+        }
+        
+        async function copy(url) {
+            try {
+                await navigator.clipboard.writeText(url);
+                alert('Copiado!');
+            } catch(e) {
+                prompt('Copia este link:', url);
+            }
+        }
+        
+        // ==================== RECEPTOR ====================
+        function setupReceiver() {
+            peer.on('call', call => {
+                console.log('Llamada entrante');
+                call.answer(null);
+                
+                call.on('stream', stream => {
+                    const v = document.getElementById('remoteVideo');
+                    v.srcObject = stream;
+                    document.getElementById('recvOverlay').classList.add('hidden');
+                });
+                
+                call.on('close', () => {
+                    document.getElementById('recvOverlay').classList.remove('hidden');
+                    document.querySelector('#recvOverlay .status-small').textContent = 'Señal perdida. Esperando reconexión...';
+                });
+            });
+        }
+        
+        function toggleFs() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(e => {});
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
