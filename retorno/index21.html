@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>StreamCall Broadcast (Fix Preview & Connection)</title>
+    <title>StreamCall Broadcast (Fix Connection & Screen)</title>
     
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -27,19 +27,21 @@
         .btn-red { background: #ef4444; color: white; }
         .btn-purple { background: #8b5cf6; color: white; }
         .btn-gray { background: #334155; color: white; border: 1px solid #475569; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         
         .director-layout { display: flex; flex-direction: column; height: 100vh; background: #0f172a; }
         .director-header { background: #1e293b; border-bottom: 1px solid #334155; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
-        .broadcast-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; padding: 20px; overflow-y: auto; }
+        .broadcast-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; padding: 20px; overflow-y: auto; }
         
         .receiver-card { background: #1e293b; border: 2px solid #334155; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
         .receiver-header { padding: 10px 15px; background: #0f172a; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
-        .receiver-status { font-size: 0.75rem; font-weight: bold; padding: 4px 10px; border-radius: 20px; }
+        .receiver-status { font-size: 0.7rem; font-weight: bold; padding: 4px 8px; border-radius: 20px; }
         .status-online { background: #10b981; color: black; }
         .status-offline { background: #64748b; color: white; }
         .status-live { background: #ef4444; color: white; animation: pulse 2s infinite; }
+        .status-waiting { background: #f59e0b; color: black; }
         
-        .preview-monitor { width: 100%; height: 200px; background: #000; border-bottom: 2px solid #334155; position: relative; }
+        .preview-monitor { width: 100%; height: 220px; background: #000; border-bottom: 2px solid #334155; position: relative; }
         .preview-video { width: 100%; height: 100%; object-fit: contain; }
         .broadcast-badge { position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; }
         .resolution-badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: #fbbf24; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; }
@@ -48,19 +50,31 @@
         .source-btn { flex: 1; padding: 10px; border: 2px solid #334155; background: #0f172a; color: #94a3b8; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.8rem; }
         .source-btn.active { border-color: #3b82f6; color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
         
-        .debug-log { font-family: monospace; font-size: 10px; color: #64748b; margin-top: 5px; max-height: 40px; overflow-y: auto; }
+        .log-console { background: #000; border: 1px solid #334155; border-radius: 6px; padding: 10px; margin-top: 10px; font-family: monospace; font-size: 10px; color: #94a3b8; height: 100px; overflow-y: auto; }
+        .log-entry { margin-bottom: 2px; }
+        .log-error { color: #ef4444; }
+        .log-success { color: #10b981; }
+        .log-info { color: #3b82f6; }
         
-        /* Viewer Layout */
-        .viewer-layout { width: 100vw; height: 100vh; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        /* Viewer */
+        .viewer-layout { width: 100vw; height: 100vh; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; }
         .viewer-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
-        .viewer-controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 100; opacity: 0; transition: opacity 0.3s; }
+        
+        .status-panel { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+        .status-icon { font-size: 48px; margin-bottom: 20px; }
+        .status-title { font-size: 1.5rem; font-weight: bold; margin-bottom: 10px; text-align: center; }
+        .status-desc { color: #64748b; text-align: center; font-size: 0.9rem; max-width: 300px; margin-bottom: 20px; }
+        .spinner { width: 40px; height: 40px; border: 3px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; }
+        
+        .hidden { display: none !important; }
+        
+        .video-overlay { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 10px 15px; border-radius: 8px; z-index: 10; }
+        .video-badge { color: #10b981; font-weight: bold; font-size: 0.8rem; }
+        .video-res { color: #64748b; font-size: 0.7rem; margin-top: 2px; }
+        
+        .viewer-controls { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 100; opacity: 0; transition: opacity 0.3s; }
         .viewer-layout:hover .viewer-controls { opacity: 1; }
-        .control-btn { background: rgba(0,0,0,0.8); border: 1px solid #475569; color: white; padding: 12px 20px; border-radius: 30px; cursor: pointer; font-weight: bold; backdrop-filter: blur(10px); }
-        
-        .connecting-screen { position: absolute; inset: 0; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 50; }
-        .spinner { width: 50px; height: 50px; border: 4px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
-        
-        .stats-overlay { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 8px; font-family: monospace; font-size: 12px; color: #10b981; z-index: 10; }
+        .control-btn { background: rgba(0,0,0,0.8); border: 1px solid #475569; color: white; padding: 12px 24px; border-radius: 30px; cursor: pointer; font-weight: bold; backdrop-filter: blur(10px); font-size: 0.9rem; }
         
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
@@ -74,101 +88,104 @@
         
         const PEER_CONFIG = { 
             config: { 
-                'iceServers': [
+                iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' }, 
-                    { urls: 'stun:stun1.l.google.com:19302' }
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' }
                 ]
             },
-            debug: 2 // Nivel de debug para ver en consola
+            debug: 0
         };
         
         const MAX_RECEIVERS = 10;
-        const MAX_RESOLUTION = { width: 1280, height: 720, frameRate: 30 };
+        
+        // Helper para logs
+        const useLogger = () => {
+            const [logs, setLogs] = useState([]);
+            const addLog = (msg, type = 'info') => {
+                const time = new Date().toLocaleTimeString('es', {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+                setLogs(prev => [...prev.slice(-20), { msg: `[${time}] ${msg}`, type }]);
+            };
+            return { logs, addLog };
+        };
 
-        // --- DIRECTOR (EMISOR) ---
+        // --- DIRECTOR ---
         const DirectorView = ({ roomName }) => {
             const [isBroadcasting, setIsBroadcasting] = useState(false);
             const [sourceType, setSourceType] = useState('camera');
             const [broadcastStream, setBroadcastStream] = useState(null);
+            const [quality, setQuality] = useState('720');
             const [receivers, setReceivers] = useState(Array(MAX_RECEIVERS).fill(null).map((_, i) => ({
                 id: i + 1,
                 connected: false,
                 receiving: false,
                 peerId: `sc_viewer_${roomName.toUpperCase()}_${i + 1}`
             })));
-            const [quality, setQuality] = useState('720');
-            const [debugInfo, setDebugInfo] = useState('');
+            const [showPreview, setShowPreview] = useState(false);
             
+            const { logs, addLog } = useLogger();
             const peer = useRef(null);
             const streamRef = useRef(null);
             const previewVideoRef = useRef(null);
-            const broadcastingRef = useRef(false); // Ref para estado actual sin delay de React
+            const connectionsRef = useRef({}); // Guardar las conexiones activas
 
-            // Actualizar preview cuando cambia el stream
             useEffect(() => {
                 if (previewVideoRef.current && broadcastStream) {
                     previewVideoRef.current.srcObject = broadcastStream;
-                    console.log('Preview actualizado con stream');
                 }
             }, [broadcastStream]);
 
-            // Inicializar Peer
             useEffect(() => {
                 const directorId = `sc_director_${roomName.toUpperCase()}`;
-                console.log('Iniciando Director:', directorId);
-                setDebugInfo(prev => prev + `\nIniciando Peer como: ${directorId}`);
+                addLog(`Iniciando Director: ${directorId}`, 'info');
                 
                 peer.current = new Peer(directorId, PEER_CONFIG);
                 
                 peer.current.on('open', (id) => {
-                    console.log('Director online con ID:', id);
-                    setDebugInfo(prev => prev + `\n✅ Conectado a red P2P: ${id}`);
+                    addLog(`✅ Conectado a red P2P`, 'success');
                 });
-
+                
                 peer.current.on('error', (err) => {
-                    console.error('Peer Error:', err);
-                    setDebugInfo(prev => prev + `\n❌ Error: ${err.type}`);
+                    addLog(`❌ Error: ${err.type}`, 'error');
+                    if (err.type === 'unavailable-id') {
+                        addLog('ID ocupado, recargando...', 'error');
+                        setTimeout(() => window.location.reload(), 2000);
+                    }
                 });
 
-                // Cuando un viewer intenta conectar
+                // Cuando un viewer se conecta (handshake)
                 peer.current.on('connection', (conn) => {
                     const slotMatch = conn.peer.match(/_(\d+)$/);
-                    if (slotMatch) {
-                        const slotId = parseInt(slotMatch[1]);
-                        console.log(`Viewer ${slotId} conectado vía señalización`);
-                        setDebugInfo(prev => prev + `\n👤 Viewer ${slotId} conectado (señal)`);
-                        
-                        setReceivers(prev => {
-                            const newReceivers = [...prev];
-                            newReceivers[slotId - 1] = { 
-                                ...newReceivers[slotId - 1], 
-                                connected: true 
-                            };
-                            return newReceivers;
-                        });
-                        
-                        conn.on('close', () => {
-                            console.log(`Viewer ${slotId} desconectado`);
-                            setDebugInfo(prev => prev + `\n👤 Viewer ${slotId} desconectado`);
-                            setReceivers(prev => {
-                                const newReceivers = [...prev];
-                                newReceivers[slotId - 1] = { 
-                                    ...newReceivers[slotId - 1], 
-                                    connected: false,
-                                    receiving: false
-                                };
-                                return newReceivers;
-                            });
-                        });
-
-                        // Si ya estamos transmitiendo, enviar el stream inmediatamente
-                        // Usamos la ref para obtener el valor actual
-                        if (streamRef.current) {
-                            console.log(`Enviando stream inmediatamente a Viewer ${slotId}`);
-                            setDebugInfo(prev => prev + `\n📡 Enviando a Viewer ${slotId}...`);
-                            startCallToReceiver(slotId, streamRef.current);
+                    if (!slotMatch) return;
+                    
+                    const slotId = parseInt(slotMatch[1]);
+                    addLog(`👤 Viewer ${slotId} conectado (señal)`, 'info');
+                    
+                    setReceivers(prev => {
+                        const newRec = [...prev];
+                        newRec[slotId - 1] = { ...newRec[slotId - 1], connected: true };
+                        return newRec;
+                    });
+                    
+                    connectionsRef.current[slotId] = conn;
+                    
+                    // Cuando el viewer solicita stream explícitamente
+                    conn.on('data', (data) => {
+                        if (data === 'REQUEST_STREAM' && streamRef.current) {
+                            addLog(`📡 Viewer ${slotId} solicita stream`, 'info');
+                            callReceiver(slotId);
                         }
-                    }
+                    });
+                    
+                    conn.on('close', () => {
+                        addLog(`👤 Viewer ${slotId} desconectado`, 'error');
+                        setReceivers(prev => {
+                            const newRec = [...prev];
+                            newRec[slotId - 1] = { ...newRec[slotId - 1], connected: false, receiving: false };
+                            return newRec;
+                        });
+                        delete connectionsRef.current[slotId];
+                    });
                 });
 
                 return () => {
@@ -177,95 +194,108 @@
                 };
             }, [roomName]);
 
-            const getMediaConstraints = () => {
-                const res = quality === '360' ? { width: 640, height: 360 } : { width: 1280, height: 720 };
-                return {
-                    video: { 
-                        width: { ideal: res.width, max: MAX_RESOLUTION.width }, 
-                        height: { ideal: res.height, max: MAX_RESOLUTION.height },
-                        frameRate: { max: MAX_RESOLUTION.frameRate },
-                        aspectRatio: { exact: 16/9 }
-                    },
-                    audio: sourceType === 'screen' ? true : { echoCancellation: true, noiseSuppression: true }
-                };
-            };
-
             const startBroadcast = async () => {
+                addLog(`Solicitando ${sourceType}...`, 'info');
+                
                 try {
                     let stream;
-                    const constraints = getMediaConstraints();
                     
                     if (sourceType === 'screen') {
+                        // Opciones específicas para que el navegador muestre el selector
                         stream = await navigator.mediaDevices.getDisplayMedia({
-                            video: constraints.video,
-                            audio: true
+                            video: {
+                                cursor: "always",
+                                displaySurface: "monitor" // "monitor", "window", "browser"
+                            },
+                            audio: {
+                                echoCancellation: false,
+                                noiseSuppression: false,
+                                sampleRate: 44100
+                            }
                         });
-                        
-                        stream.getVideoTracks()[0].onended = () => {
-                            stopBroadcast();
-                        };
+                        addLog('✅ Pantalla seleccionada', 'success');
                     } else {
-                        stream = await navigator.mediaDevices.getUserMedia(constraints);
+                        const res = quality === '360' ? { width: 640, height: 360 } : { width: 1280, height: 720 };
+                        stream = await navigator.mediaDevices.getUserMedia({
+                            video: { 
+                                width: { ideal: res.width }, 
+                                height: { ideal: res.height },
+                                aspectRatio: 16/9
+                            },
+                            audio: { echoCancellation: true, noiseSuppression: true }
+                        });
+                        addLog('✅ Cámara iniciada', 'success');
+                    }
+                    
+                    // Detectar cierre de pantalla (solo para screen)
+                    if (sourceType === 'screen') {
+                        const videoTrack = stream.getVideoTracks()[0];
+                        if (videoTrack) {
+                            videoTrack.onended = () => {
+                                addLog('⏹ Compartición detenida por usuario', 'error');
+                                stopBroadcast();
+                            };
+                        }
                     }
                     
                     streamRef.current = stream;
                     setBroadcastStream(stream);
                     setIsBroadcasting(true);
-                    broadcastingRef.current = true;
+                    setShowPreview(true);
                     
-                    console.log('Broadcast iniciado, enviando a receptores conectados...');
-                    setDebugInfo(prev => prev + `\n🔴 Broadcast iniciado (${quality}p)`);
+                    const settings = stream.getVideoTracks()[0]?.getSettings();
+                    addLog(`🎬 Broadcast iniciado: ${settings?.width}x${settings?.height}`, 'success');
                     
-                    // Enviar a todos los receptores ya conectados
-                    receivers.forEach((rec, idx) => {
-                        if (rec.connected) {
-                            console.log(`Llamando a receptor ${idx + 1}...`);
-                            startCallToReceiver(idx + 1, stream);
+                    // Enviar a viewers ya conectados
+                    Object.keys(connectionsRef.current).forEach(slotId => {
+                        const conn = connectionsRef.current[slotId];
+                        if (conn.open) {
+                            addLog(`Enviando a Viewer ${slotId}...`, 'info');
+                            callReceiver(parseInt(slotId));
                         }
                     });
                     
                 } catch (err) {
-                    console.error('Error iniciando broadcast:', err);
-                    setDebugInfo(prev => prev + `\n❌ Error: ${err.message}`);
-                    alert('Error al acceder a la fuente: ' + err.message);
+                    console.error(err);
+                    if (err.name === 'NotAllowedError') {
+                        addLog('❌ Permiso denegado o cancelado por usuario', 'error');
+                        alert('Debes permitir el acceso para iniciar el broadcast');
+                    } else {
+                        addLog(`❌ Error: ${err.message}`, 'error');
+                        alert('Error: ' + err.message);
+                    }
                 }
             };
 
-            const startCallToReceiver = (slotId, stream) => {
-                if (!peer.current) return;
+            const callReceiver = (slotId) => {
+                if (!peer.current || !streamRef.current) return;
                 
                 const peerId = `sc_viewer_${roomName.toUpperCase()}_${slotId}`;
-                console.log(`Llamando a: ${peerId}`);
+                addLog(`Llamando a ${peerId}...`, 'info');
                 
                 try {
-                    const call = peer.current.call(peerId, stream);
-                    
-                    if (!call) {
-                        console.error('No se pudo crear la llamada');
-                        return;
-                    }
+                    const call = peer.current.call(peerId, streamRef.current);
                     
                     setReceivers(prev => {
-                        const newReceivers = [...prev];
-                        newReceivers[slotId - 1] = { ...newReceivers[slotId - 1], receiving: true };
-                        return newReceivers;
+                        const newRec = [...prev];
+                        newRec[slotId - 1] = { ...newRec[slotId - 1], receiving: true };
+                        return newRec;
                     });
                     
                     call.on('error', (err) => {
-                        console.error(`Error en llamada a ${slotId}:`, err);
+                        addLog(`Error llamada #${slotId}: ${err}`, 'error');
                     });
                     
                     call.on('close', () => {
-                        console.log(`Llamada cerrada con ${slotId}`);
                         setReceivers(prev => {
-                            const newReceivers = [...prev];
-                            newReceivers[slotId - 1] = { ...newReceivers[slotId - 1], receiving: false };
-                            return newReceivers;
+                            const newRec = [...prev];
+                            newRec[slotId - 1] = { ...newRec[slotId - 1], receiving: false };
+                            return newRec;
                         });
                     });
                     
                 } catch (e) {
-                    console.error('Error al llamar:', e);
+                    addLog(`Error al llamar #${slotId}: ${e.message}`, 'error');
                 }
             };
 
@@ -274,25 +304,24 @@
                 streamRef.current = null;
                 setBroadcastStream(null);
                 setIsBroadcasting(false);
-                broadcastingRef.current = false;
-                setDebugInfo(prev => prev + `\n⏹ Broadcast detenido`);
+                setShowPreview(false);
+                addLog('⏹ Broadcast detenido', 'error');
                 
-                // Nota: No destruimos las llamadas, solo detenemos el stream
-                // Los receptores verán el video congelado hasta que reconecten
+                setReceivers(prev => prev.map(r => ({ ...r, receiving: false })));
             };
 
             const copyLink = (slotId) => {
                 const url = `${window.location.href.split('?')[0]}?mode=viewer&room=${roomName}&slot=${slotId}`;
                 navigator.clipboard.writeText(url);
-                alert(`Link para Receptor ${slotId} copiado`);
+                addLog(`Link #${slotId} copiado`, 'success');
             };
 
             return (
                 <div className="director-layout">
                     <div className="director-header">
                         <div>
-                            <h1 className="text-2xl font-black text-blue-400 uppercase tracking-tighter">STREAM BROADCAST</h1>
-                            <p className="text-gray-400 text-sm font-bold">SALA: {roomName.toUpperCase()} | MAX: 10 RECEPTORES</p>
+                            <h1 className="text-xl font-black text-blue-400 uppercase">BROADCAST DIRECTOR</h1>
+                            <p className="text-gray-400 text-xs font-bold">SALA: {roomName.toUpperCase()} | MAX: 10</p>
                         </div>
                         
                         <div className="flex items-center gap-3 flex-wrap">
@@ -312,40 +341,40 @@
                                     onClick={() => setSourceType('camera')}
                                     disabled={isBroadcasting}
                                 >
-                                    📹 CÁMARA
+                                    📹 CAM
                                 </button>
                                 <button 
                                     className={`source-btn ${sourceType === 'screen' ? 'active' : ''}`}
                                     onClick={() => setSourceType('screen')}
                                     disabled={isBroadcasting}
                                 >
-                                    🖥️ PANTALLA
+                                    🖥️ PANT
                                 </button>
                             </div>
                             
                             {!isBroadcasting ? (
-                                <button className="btn btn-red" onClick={startBroadcast} style={{minWidth: '150px'}}>
+                                <button className="btn btn-red" onClick={startBroadcast} style={{minWidth: '120px'}}>
                                     🔴 INICIAR
                                 </button>
                             ) : (
-                                <button className="btn btn-green" onClick={stopBroadcast} style={{minWidth: '150px'}}>
-                                    ⏹ DETENER
+                                <button className="btn btn-green" onClick={stopBroadcast} style={{minWidth: '120px'}}>
+                                    ⏹ STOP
                                 </button>
                             )}
                         </div>
                     </div>
 
                     <div className="broadcast-grid">
-                        {/* Preview del Director - CORREGIDO */}
-                        <div className="receiver-card" style={{border: '2px solid #3b82f6', gridColumn: 'span 2'}}>
+                        {/* Preview Principal */}
+                        <div className="receiver-card" style={{border: '2px solid #3b82f6', gridColumn: window.innerWidth > 1024 ? 'span 2' : 'span 1'}}>
                             <div className="receiver-header">
                                 <span className="font-bold text-blue-400">TU SEÑAL (PREVIEW)</span>
-                                <span className="receiver-status status-live">
-                                    {isBroadcasting ? 'TRANSMITIENDO' : 'STANDBY'}
+                                <span className={`receiver-status ${isBroadcasting ? 'status-live' : 'status-offline'}`}>
+                                    {isBroadcasting ? 'ON AIR' : 'STANDBY'}
                                 </span>
                             </div>
                             <div className="video-box preview-monitor">
-                                {broadcastStream ? (
+                                {showPreview && broadcastStream ? (
                                     <>
                                         <video 
                                             ref={previewVideoRef}
@@ -354,53 +383,54 @@
                                             muted 
                                             playsInline 
                                         />
-                                        <div className="broadcast-badge">🔴 EN VIVO</div>
+                                        <div className="broadcast-badge">LIVE</div>
                                         <div className="resolution-badge">
-                                            {broadcastStream?.getVideoTracks()[0]?.getSettings()?.width || '?'}x
-                                            {broadcastStream?.getVideoTracks()[0]?.getSettings()?.height || '?'} 
-                                            | {quality}p | 16:9
+                                            {broadcastStream?.getVideoTracks()[0]?.label || 'Video'} | 
+                                            {broadcastStream?.getVideoTracks()[0]?.getSettings()?.width}x
+                                            {broadcastStream?.getVideoTracks()[0]?.getSettings()?.height}
                                         </div>
                                     </>
                                 ) : (
-                                    <div className="flex items-center justify-center h-full text-gray-500 flex-col gap-2">
-                                        <div className="text-4xl">📹</div>
-                                        <div className="font-bold">PREVIEW APARECERÁ AQUÍ</div>
-                                        <div className="text-xs">Selecciona fuente e inicia broadcast</div>
+                                    <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                                        <div className="text-4xl mb-2">📹</div>
+                                        <div className="font-bold text-sm">PREVIEW</div>
+                                        <div className="text-xs mt-1">Selecciona fuente e inicia</div>
                                     </div>
                                 )}
                             </div>
-                            <div className="p-3 text-xs text-gray-400 flex justify-between items-center">
-                                <span>Fuente: {sourceType === 'screen' ? 'Captura de Pantalla' : 'Cámara Web'}</span>
-                                <span className="text-[10px] opacity-50">{debugInfo.split('\n').pop()}</span>
+                            
+                            {/* Consola de Logs */}
+                            <div className="log-console">
+                                {logs.map((log, i) => (
+                                    <div key={i} className={`log-entry log-${log.type}`}>{log.msg}</div>
+                                ))}
+                                {logs.length === 0 && <div className="log-entry text-gray-600">Esperando acción...</div>}
                             </div>
                         </div>
 
-                        {/* Slots para Receptores 1-10 */}
+                        {/* Receptores 1-10 */}
                         {receivers.map((rec) => (
                             <div key={rec.id} className="receiver-card">
                                 <div className="receiver-header">
-                                    <span className="font-bold text-gray-300">RECEPTOR {rec.id}</span>
-                                    <span className={`receiver-status ${rec.connected ? (rec.receiving ? 'status-live' : 'status-online') : 'status-offline'}`}>
-                                        {!rec.connected ? 'OFFLINE' : rec.receiving ? 'RECIBIENDO' : 'CONECTADO'}
+                                    <span className="font-bold text-gray-300">#{rec.id}</span>
+                                    <span className={`receiver-status ${
+                                        rec.receiving ? 'status-live' : 
+                                        rec.connected ? 'status-waiting' : 'status-offline'
+                                    }`}>
+                                        {rec.receiving ? 'RECIBIENDO' : rec.connected ? 'ESPERA' : 'OFF'}
                                     </span>
                                 </div>
-                                <div className="video-box" style={{height: '120px', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                                    <div style={{textAlign: 'center'}}>
-                                        <div style={{fontSize: '24px', marginBottom: '5px'}}>
-                                            {rec.receiving ? '📡' : rec.connected ? '⏳' : '💤'}
-                                        </div>
-                                        <div style={{fontSize: '10px', color: '#64748b'}}>
-                                            {rec.receiving ? 'Streaming activo' : rec.connected ? 'Esperando señal...' : 'Esperando conexión'}
-                                        </div>
-                                    </div>
-                                </div>
                                 <div className="p-3">
-                                    <button className="btn btn-blue text-xs !py-2" onClick={() => copyLink(rec.id)}>
-                                        COPIAR LINK #{rec.id}
+                                    <button 
+                                        className="btn btn-blue text-xs !py-2" 
+                                        onClick={() => copyLink(rec.id)}
+                                        disabled={isBroadcasting && rec.connected && !rec.receiving}
+                                    >
+                                        {rec.receiving ? '✓ ACTIVO' : 'COPIAR LINK'}
                                     </button>
-                                    {rec.connected && (
-                                        <div className="text-[10px] text-green-500 mt-1 text-center">
-                                            Dispositivo conectado
+                                    {rec.connected && !rec.receiving && isBroadcasting && (
+                                        <div className="text-[10px] text-amber-400 mt-1">
+                                            Conectado pero sin stream - Recargar página del receptor
                                         </div>
                                     )}
                                 </div>
@@ -411,123 +441,159 @@
             );
         };
 
-        // --- VIEWER (RECEPTOR) ---
+        // --- VIEWER ---
         const ViewerView = ({ roomName, slotId }) => {
-            const [status, setStatus] = useState('init'); // 'init' | 'connecting' | 'waiting' | 'receiving' | 'error'
-            const [remoteStream, setRemoteStream] = useState(null);
-            const [debugMsg, setDebugMsg] = useState('Iniciando...');
-            const [videoStats, setVideoStats] = useState('');
+            const [status, setStatus] = useState('init'); // init, connecting, requesting, receiving, error, retrying
+            const [statusMsg, setStatusMsg] = useState('Iniciando...');
+            const [videoInfo, setVideoInfo] = useState('');
+            const [retryCount, setRetryCount] = useState(0);
             
             const peer = useRef(null);
             const videoRef = useRef(null);
             const connRef = useRef(null);
+            const callRef = useRef(null);
 
             useEffect(() => {
                 const viewerId = `sc_viewer_${roomName.toUpperCase()}_${slotId}`;
                 const directorId = `sc_director_${roomName.toUpperCase()}`;
                 
-                setDebugMsg(`ID: ${viewerId}\nDirector: ${directorId}`);
+                setStatus('connecting');
+                setStatusMsg(`Conectando a sala ${roomName}...`);
+                
                 console.log('Viewer iniciando:', viewerId);
                 
                 peer.current = new Peer(viewerId, PEER_CONFIG);
                 
-                peer.current.on('open', (id) => {
-                    console.log('Viewer peer abierto:', id);
-                    setStatus('connecting');
-                    setDebugMsg(prev => prev + '\n✅ Peer abierto, conectando al Director...');
+                const setupConnection = () => {
+                    // Conexión de datos (señalización)
+                    connRef.current = peer.current.connect(directorId, {
+                        reliable: false,
+                        metadata: { slot: slotId, timestamp: Date.now() }
+                    });
                     
-                    // Conectar con el director
-                    try {
-                        connRef.current = peer.current.connect(directorId, { 
-                            reliable: false,
-                            metadata: { slot: slotId }
-                        });
+                    connRef.current.on('open', () => {
+                        console.log('Conexión de señal abierta');
+                        setStatus('requesting');
+                        setStatusMsg('Solicitando señal de video...');
+                        setRetryCount(0);
                         
-                        connRef.current.on('open', () => {
-                            console.log('Conexión de señalización establecida');
-                            setStatus('waiting');
-                            setDebugMsg(prev => prev + '\n⏳ Conectado. Esperando que Director inicie broadcast...');
-                        });
+                        // Solicitar stream explícitamente
+                        connRef.current.send('REQUEST_STREAM');
                         
-                        connRef.current.on('error', (err) => {
-                            console.error('Error en conexión:', err);
-                            setDebugMsg(prev => prev + '\n❌ Error conexión: ' + err);
-                        });
-                        
-                        connRef.current.on('close', () => {
-                            setStatus('waiting');
-                            setDebugMsg(prev => prev + '\n⚠️ Conexión cerrada. Reintentando...');
-                            // Reintentar conexión cada 3 segundos
-                            setTimeout(() => {
-                                if (peer.current && !connRef.current.open) {
-                                    connRef.current = peer.current.connect(directorId, { reliable: false });
-                                }
-                            }, 3000);
-                        });
-                        
-                    } catch (e) {
-                        console.error('Error creando conexión:', e);
-                        setDebugMsg(prev => prev + '\n❌ ' + e.message);
-                    }
-                });
-                
-                // Recibir la llamada del director
-                peer.current.on('call', (call) => {
-                    console.log('Llamada entrante del Director!');
-                    setDebugMsg(prev => prev + '\n📞 Llamada entrante...');
-                    setStatus('receiving');
-                    
-                    // Answer sin stream local (null) - solo recibimos
-                    call.answer(null);
-                    
-                    call.on('stream', (stream) => {
-                        console.log('Stream recibido:', stream.getTracks().length, 'tracks');
-                        setDebugMsg(prev => prev + `\n✅ Stream recibido! Tracks: ${stream.getTracks().length}`);
-                        setRemoteStream(stream);
-                        
-                        if (videoRef.current) {
-                            videoRef.current.srcObject = stream;
-                            // Forzar play para móviles
-                            videoRef.current.play().catch(e => {
-                                console.log('Autoplay prevented:', e);
-                                setDebugMsg(prev => prev + '\n⚠️ Click para iniciar video');
-                            });
-                            
-                            // Actualizar stats
-                            const settings = stream.getVideoTracks()[0]?.getSettings();
-                            if (settings) {
-                                setVideoStats(`${settings.width}x${settings.height} @ ${settings.frameRate}fps`);
+                        // Reintentar solicitud cada 3 segundos si no recibimos nada
+                        const requestInterval = setInterval(() => {
+                            if (status !== 'receiving' && connRef.current.open) {
+                                console.log('Re-solicitando stream...');
+                                connRef.current.send('REQUEST_STREAM');
+                                setStatusMsg(`Reintentando solicitud... (${retryCount + 1})`);
+                                setRetryCount(c => c + 1);
+                            } else {
+                                clearInterval(requestInterval);
                             }
+                        }, 3000);
+                        
+                        // Limpiar después de 30 segundos o cuando recibamos
+                        setTimeout(() => clearInterval(requestInterval), 30000);
+                    });
+                    
+                    connRef.current.on('close', () => {
+                        console.log('Conexión cerrada');
+                        if (status !== 'receiving') {
+                            setStatus('error');
+                            setStatusMsg('Conexión perdida. Reintentando en 2s...');
+                            setTimeout(setupConnection, 2000);
                         }
                     });
                     
-                    call.on('error', (err) => {
-                        console.error('Error en llamada:', err);
-                        setDebugMsg(prev => prev + '\n❌ Error llamada: ' + err);
+                    connRef.current.on('error', (err) => {
+                        console.error('Error conexión:', err);
                         setStatus('error');
+                        setStatusMsg('Error de conexión');
+                    });
+                };
+                
+                peer.current.on('open', () => {
+                    console.log('Peer abierto, conectando...');
+                    setupConnection();
+                });
+                
+                // Recibir la llamada de media (el stream real)
+                peer.current.on('call', (call) => {
+                    console.log('Llamada entrante del Director!');
+                    setStatus('receiving');
+                    setStatusMsg('Recibiendo señal de video...');
+                    
+                    // IMPORTANTE: Responder sin stream local (null)
+                    call.answer(null);
+                    callRef.current = call;
+                    
+                    call.on('stream', (remoteStream) => {
+                        console.log('Stream recibido!', remoteStream.id);
+                        
+                        if (videoRef.current) {
+                            videoRef.current.srcObject = remoteStream;
+                            
+                            // Forzar play en móviles
+                            const playPromise = videoRef.current.play();
+                            if (playPromise !== undefined) {
+                                playPromise.catch(e => {
+                                    console.log('Autoplay bloqueado, intentando con muted...');
+                                    videoRef.current.muted = true;
+                                    videoRef.current.play().then(() => {
+                                        setTimeout(() => { videoRef.current.muted = false; }, 1000);
+                                    });
+                                });
+                            }
+                            
+                            const settings = remoteStream.getVideoTracks()[0]?.getSettings();
+                            setVideoInfo(`${settings?.width}x${settings?.height} | ${Math.round(settings?.frameRate)}fps`);
+                        }
                     });
                     
                     call.on('close', () => {
                         console.log('Llamada cerrada');
-                        setDebugMsg(prev => prev + '\n📴 Llamada cerrada');
-                        setStatus('waiting');
-                        setRemoteStream(null);
+                        setStatus('error');
+                        setStatusMsg('Señal cerrada. Reconectando...');
+                        setTimeout(setupConnection, 2000);
+                    });
+                    
+                    call.on('error', (err) => {
+                        console.error('Error en llamada:', err);
+                        setStatus('error');
+                        setStatusMsg('Error en transmisión');
                     });
                 });
-
+                
                 peer.current.on('error', (err) => {
                     console.error('Peer error:', err);
-                    setDebugMsg(prev => prev + '\n❌ Peer Error: ' + err.type);
                     if (err.type === 'unavailable-id') {
-                        setDebugMsg(prev => prev + '\n⚠️ ID en uso, recargando...');
+                        setStatusMsg('ID en uso, recargando...');
                         setTimeout(() => window.location.reload(), 2000);
+                    } else if (err.type === 'peer-unavailable') {
+                        setStatus('error');
+                        setStatusMsg('Director offline. Reintentando...');
+                        setTimeout(setupConnection, 3000);
+                    } else {
+                        setStatus('error');
+                        setStatusMsg(`Error: ${err.type}`);
                     }
                 });
-
+                
+                // Reconexión periódica si estamos en error
+                const reconnectLoop = setInterval(() => {
+                    if (status === 'error' && peer.current && !connRef.current?.open) {
+                        console.log('Intentando reconectar...');
+                        setupConnection();
+                    }
+                }, 5000);
+                
                 return () => {
+                    clearInterval(reconnectLoop);
+                    callRef.current?.close();
+                    connRef.current?.close();
                     peer.current?.destroy();
                 };
-            }, [roomName, slotId]);
+            }, [roomName, slotId, retryCount, status]);
 
             const requestFullscreen = () => {
                 const elem = document.documentElement;
@@ -535,67 +601,66 @@
                 else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
             };
 
+            const isConnecting = status !== 'receiving';
+
             return (
                 <div className="viewer-layout">
-                    {/* Estados de conexión */}
-                    {status !== 'receiving' && (
-                        <div className="connecting-screen">
-                            {status === 'init' && <div className="spinner"></div>}
-                            {status === 'connecting' && <div className="spinner"></div>}
-                            {status === 'waiting' && <div className="text-6xl mb-4">⏳</div>}
-                            {status === 'error' && <div className="text-6xl mb-4">⚠️</div>}
-                            
-                            <h2 className="text-xl font-bold mb-2">
-                                {status === 'init' && 'INICIANDO...'}
-                                {status === 'connecting' && 'CONECTANDO A SALA...'}
-                                {status === 'waiting' && 'CONECTADO - ESPERANDO SEÑAL'}
-                                {status === 'error' && 'ERROR DE CONEXIÓN'}
-                            </h2>
-                            
-                            <p className="text-gray-400 text-center max-w-md px-4 mb-4">
-                                {status === 'waiting' 
-                                    ? 'El Director debe iniciar el broadcast. Mantén esta ventana abierta.' 
-                                    : 'Estableciendo conexión P2P...'}
-                            </p>
-                            
-                            <div className="bg-black p-4 rounded text-left text-[10px] text-gray-500 font-mono max-w-sm">
-                                <div>SALA: {roomName}</div>
-                                <div>SLOT: {slotId}</div>
-                                <div style={{whiteSpace: 'pre-line', marginTop: '10px'}}>{debugMsg}</div>
+                    {/* Panel de estado (oculto cuando recibimos video) */}
+                    {isConnecting && (
+                        <div className="status-panel">
+                            <div className="status-icon">
+                                {status === 'connecting' && '⏳'}
+                                {status === 'requesting' && '📡'}
+                                {status === 'error' && '⚠️'}
+                                {status === 'init' && '🚀'}
                             </div>
                             
-                            {status === 'waiting' && (
-                                <button 
-                                    className="btn btn-blue mt-4" 
-                                    style={{width: 'auto', padding: '10px 20px'}}
-                                    onClick={() => window.location.reload()}
-                                >
-                                    🔄 RECONECTAR MANUAL
+                            <div className="spinner" style={{display: (status === 'connecting' || status === 'requesting') ? 'block' : 'none', marginBottom: '20px'}}></div>
+                            
+                            <div className="status-title">
+                                {status === 'connecting' && 'CONECTANDO...'}
+                                {status === 'requesting' && 'SOLICITANDO SEÑAL'}
+                                {status === 'error' && 'ERROR DE CONEXIÓN'}
+                            </div>
+                            
+                            <div className="status-desc">
+                                {statusMsg}<br/>
+                                <small style={{color: '#475569', fontSize: '11px', marginTop: '5px', display: 'block'}}>
+                                    Sala: {roomName} | Receptor: #{slotId}
+                                </small>
+                            </div>
+                            
+                            {status === 'error' && (
+                                <button className="btn btn-blue" style={{width: 'auto', padding: '10px 30px'}} onClick={() => window.location.reload()}>
+                                    🔄 RECARGAR PÁGINA
                                 </button>
                             )}
                         </div>
                     )}
-
-                    {/* Video */}
-                    {remoteStream && (
+                    
+                    {/* Video (siempre renderizado pero oculto si no hay stream) */}
+                    <video 
+                        ref={videoRef}
+                        className="viewer-video" 
+                        autoPlay 
+                        playsInline 
+                        muted={false}
+                        controls={false}
+                        style={{ 
+                            opacity: status === 'receiving' ? 1 : 0,
+                            width: '100%', 
+                            height: '100%', 
+                            objectFit: 'contain',
+                            background: '#000'
+                        }}
+                    />
+                    
+                    {/* Overlay de info (solo cuando recibimos) */}
+                    {status === 'receiving' && (
                         <>
-                            <video 
-                                ref={videoRef}
-                                className="viewer-video" 
-                                autoPlay 
-                                playsInline 
-                                controls={false}
-                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                            />
-                            
-                            <div className="stats-overlay">
-                                <div>🔴 EN VIVO</div>
-                                <div style={{fontSize: '10px', color: '#64748b', marginTop: '4px'}}>
-                                    {videoStats}
-                                </div>
-                                <div style={{fontSize: '9px', color: '#475569', marginTop: '2px'}}>
-                                    {roomName} | R{slotId}
-                                </div>
+                            <div className="video-overlay">
+                                <div className="video-badge">● EN VIVO</div>
+                                <div className="video-res">{videoInfo}</div>
                             </div>
                             
                             <div className="viewer-controls">
@@ -609,7 +674,7 @@
             );
         };
 
-        // --- APP ROUTER ---
+        // --- ROUTER ---
         const App = () => {
             const [appState, setAppState] = useState({ mode: null, room: null, slot: '1' });
 
@@ -629,41 +694,37 @@
             if (appState.mode === 'director') return <DirectorView roomName={appState.room} />;
             if (appState.mode === 'viewer') return <ViewerView roomName={appState.room} slotId={appState.slot} />;
             
-            if (appState.mode === 'lobby') {
-                return (
-                    <div className="lobby-container">
-                        <div className="glass-box">
-                            <h1 className="text-3xl font-black mb-2 uppercase text-blue-500 tracking-tighter">STREAM BROADCAST</h1>
-                            <p className="text-gray-400 text-sm mb-6">1 Emisor → 10 Receptores | 16:9 | 720p Max</p>
-                            
-                            <input 
-                                value={appState.room} 
-                                onChange={(e) => setAppState({...appState, room: e.target.value.toUpperCase()})} 
-                                placeholder="NOMBRE DE SALA" 
-                            />
-                            
-                            <button 
-                                className="btn btn-red w-full py-4 text-lg mb-4" 
-                                onClick={() => window.location.href=`?mode=director&room=${appState.room}`}
-                            >
-                                🎬 ABRIR DASHBOARD DIRECTOR
-                            </button>
-                            
-                            <div className="text-xs text-gray-500 mt-4 text-left space-y-2">
-                                <p className="font-bold">INSTRUCCIONES:</p>
-                                <ol className="list-decimal pl-4 space-y-1 text-[11px]">
-                                    <li>Crea una sala como Director</li>
-                                    <li>Selecciona fuente: Cámara o Pantalla</li>
-                                    <li>Inicia el Broadcast (verás tu preview)</li>
-                                    <li>Copia links y envíalos a receptores</li>
-                                    <li>Los receptores abren el link y ven la señal</li>
-                                </ol>
-                            </div>
+            return (
+                <div className="lobby-container">
+                    <div className="glass-box">
+                        <h1 className="text-3xl font-black mb-2 uppercase text-blue-500">STREAM BROADCAST</h1>
+                        <p className="text-gray-400 text-sm mb-6">1 Emisor → 10 Receptores | 16:9 | 720p</p>
+                        
+                        <input 
+                            value={appState.room} 
+                            onChange={(e) => setAppState({...appState, room: e.target.value.toUpperCase()})} 
+                            placeholder="NOMBRE DE SALA" 
+                        />
+                        
+                        <button 
+                            className="btn btn-red w-full py-4 text-lg mb-4" 
+                            onClick={() => window.location.href=`?mode=director&room=${appState.room}`}
+                        >
+                            🎬 ABRIR DASHBOARD
+                        </button>
+                        
+                        <div className="text-xs text-gray-500 text-left">
+                            <p className="font-bold mb-2">CORRECCIONES:</p>
+                            <ul className="list-disc pl-4 space-y-1 text-[11px]">
+                                <li>Sistema de handshake robusto (solicitud explícita)</li>
+                                <li>Captura de pantalla con selector nativo</li>
+                                <li>Reconexión automática cada 3 segundos</li>
+                                <li>Preview en Dashboard garantizado</li>
+                            </ul>
                         </div>
                     </div>
-                );
-            }
-            return null;
+                </div>
+            );
         };
         
         ReactDOM.createRoot(document.getElementById('root')).render(<App />);
