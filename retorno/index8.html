@@ -3,322 +3,124 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Retorno Pro P2P</title>
+    <title>Retorno Pro P2P - Reconexión Automática</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; overflow: hidden; height: 100vh; }
         
-        /* EMISOR - LAYOUT SCROLLABLE */
-        .broadcast-view { 
-            display: none; 
-            height: 100vh; 
-            flex-direction: column; 
-            background: #0a0a0a; 
-            overflow: hidden; /* El contenedor principal no scrollea, el contenido sí */
-        }
+        .debug-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999; display: none; padding: 20px; overflow-y: auto; font-family: monospace; font-size: 11px; }
+        .debug-overlay.active { display: block; }
+        .debug-close { position: fixed; top: 10px; right: 10px; background: #ff6b00; color: #000; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; z-index: 10000; cursor: pointer; }
+        .debug-line { margin: 2px 0; border-left: 2px solid transparent; padding-left: 4px; font-size: 10px; }
+        .debug-err { border-left-color: #ff0000; color: #ff5555; }
+        .debug-ok { border-left-color: #00ff00; color: #55ff55; }
+        .debug-info { border-left-color: #ff6b00; color: #ffaa55; }
+        
+        /* EMISOR */
+        .broadcast-view { display: none; height: 100vh; flex-direction: column; background: #0a0a0a; }
         .broadcast-view.active { display: flex; }
         
-        header { 
-            background: #111; 
-            padding: 12px 15px; 
-            border-bottom: 2px solid #ff6b00; 
-            flex-shrink: 0; /* No se encoge */
-            position: relative;
-            z-index: 10;
-        }
-        .title { color: #ff6b00; font-size: 18px; font-weight: bold; display: flex; align-items: center; gap: 10px; justify-content: space-between; }
-        .subtitle { font-size: 11px; color: #666; margin-top: 2px; }
+        header { background: #111; padding: 12px 15px; border-bottom: 2px solid #ff6b00; flex-shrink: 0; }
+        .title { color: #ff6b00; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
         
-        .status-bar { 
-            background: #1a1a1a; 
-            padding: 8px 15px; 
-            font-size: 12px; 
-            display: flex; 
-            gap: 15px; 
-            align-items: center; 
-            border-bottom: 1px solid #333; 
-            flex-shrink: 0;
-        }
-        .status-indicator { display: flex; align-items: center; gap: 5px; }
-        .dot { width: 8px; height: 8px; border-radius: 50%; background: #333; }
+        .status-bar { background: #1a1a1a; padding: 8px 15px; font-size: 12px; display: flex; gap: 15px; align-items: center; border-bottom: 1px solid #333; flex-shrink: 0; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #333; display: inline-block; margin-right: 5px; }
         .dot.green { background: #00ff00; box-shadow: 0 0 5px #00ff00; }
         .dot.yellow { background: #ffff00; animation: blink 1s infinite; }
         .dot.red { background: #ff0000; }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
         
-        /* Área scrollable principal */
-        .scroll-container { 
-            flex: 1; 
-            overflow-y: auto; 
-            padding: 15px; 
-            -webkit-overflow-scrolling: touch; /* Smooth scroll en iOS */
-        }
+        .scroll-container { flex: 1; overflow-y: auto; padding: 15px; -webkit-overflow-scrolling: touch; }
+        .card { background: #141414; border: 1px solid #2a2a2a; border-radius: 12px; padding: 15px; margin-bottom: 15px; max-width: 800px; margin-left: auto; margin-right: auto; }
         
-        .card { 
-            background: #141414; 
-            border: 1px solid #2a2a2a; 
-            border-radius: 12px; 
-            padding: 15px; 
-            margin-bottom: 15px; 
-            max-width: 800px; 
-            margin-left: auto; 
-            margin-right: auto;
-        }
-        
-        .preview-box { 
-            background: #000; 
-            border-radius: 8px; 
-            aspect-ratio: 16/9; 
-            position: relative; 
-            overflow: hidden; 
-            margin-bottom: 12px; 
-            border: 2px solid #333; 
-            max-height: 40vh;
-        }
+        .preview-box { background: #000; border-radius: 8px; aspect-ratio: 16/9; position: relative; overflow: hidden; margin-bottom: 12px; border: 2px solid #333; max-height: 40vh; }
         .preview-box video { width: 100%; height: 100%; object-fit: contain; background: #000; }
         .preview-label { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.7); padding: 4px 8px; font-size: 11px; color: #ff6b00; border-radius: 4px; }
         .resolution-badge { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.8); padding: 4px 8px; font-size: 11px; color: #00ff00; border-radius: 4px; font-family: monospace; }
         
         .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; margin-bottom: 12px; }
-        button { 
-            padding: 12px; 
-            border: none; 
-            border-radius: 8px; 
-            background: #2a2a2a; 
-            color: #fff; 
-            font-weight: 600; 
-            font-size: 13px; 
-            cursor: pointer; 
-            transition: all 0.2s; 
-            border: 2px solid transparent; 
-            white-space: nowrap;
-        }
+        button { padding: 12px; border: none; border-radius: 8px; background: #2a2a2a; color: #fff; font-weight: 600; font-size: 13px; cursor: pointer; border: 2px solid transparent; }
         button:active { transform: scale(0.98); }
         button.primary { background: #ff6b00; color: #000; }
-        button:disabled { opacity: 0.4; cursor: not-allowed; background: #1a1a1a; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
         button.active-source { border-color: #ff6b00; background: #2a1f0f; }
         
-        .quality-display { 
-            background: #1a1a1a; 
-            padding: 10px 15px; 
-            border-radius: 8px; 
-            font-size: 13px; 
-            color: #888; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            margin-bottom: 10px; 
-            flex-wrap: wrap;
-            gap: 8px;
-        }
+        .quality-display { background: #1a1a1a; padding: 10px; border-radius: 8px; font-size: 13px; color: #888; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
         .quality-display strong { color: #ff6b00; }
         
-        .input-group { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: nowrap; }
-        input { 
-            flex: 1; 
-            background: #0f0f0f; 
-            border: 1px solid #333; 
-            color: #fff; 
-            padding: 12px; 
-            border-radius: 8px; 
-            font-size: 14px; 
-            font-family: monospace; 
-            min-width: 0; /* Para que no se desborde en móvil */
-        }
+        .input-group { display: flex; gap: 8px; margin-bottom: 10px; }
+        input { flex: 1; background: #0f0f0f; border: 1px solid #333; color: #fff; padding: 12px; border-radius: 8px; font-size: 14px; font-family: monospace; }
         input:focus { outline: none; border-color: #ff6b00; }
         
-        /* Lista de reporteros con scroll propio si es necesario */
-        .reporter-list { 
-            display: flex; 
-            flex-direction: column; 
-            gap: 10px; 
-            max-height: 50vh; /* Altura máxima para que no empuje todo hacia abajo */
-            overflow-y: auto; /* Scroll interno si hay muchos */
-            padding-right: 5px; /* Espacio para el scroll */
-        }
-        
-        .reporter-item { 
-            background: #0f0f0f; 
-            border: 1px solid #2a2a2a; 
-            padding: 12px; 
-            border-radius: 8px; 
-            position: relative; 
-            word-break: break-all;
-        }
+        .reporter-list { display: flex; flex-direction: column; gap: 10px; max-height: 40vh; overflow-y: auto; }
+        .reporter-item { background: #0f0f0f; border: 1px solid #2a2a2a; padding: 12px; border-radius: 8px; position: relative; word-break: break-all; }
         .reporter-item.active { border-color: #00ff00; background: #0a1a0a; }
         .reporter-item.error { border-color: #ff0000; background: #1a0000; }
-        
-        .reporter-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 8px;
-            gap: 8px;
-        }
-        
-        .reporter-id { 
-            font-family: monospace; 
-            color: #00ff00; 
-            font-weight: bold; 
-            font-size: 16px; 
-            flex: 1;
-        }
-        
-        .badge { 
-            padding: 3px 8px; 
-            border-radius: 4px; 
-            background: #333; 
-            font-size: 10px; 
-            font-weight: bold;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
+        .reporter-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px; }
+        .reporter-id { font-family: monospace; color: #00ff00; font-weight: bold; font-size: 16px; flex: 1; }
+        .badge { padding: 3px 8px; border-radius: 4px; background: #333; font-size: 10px; font-weight: bold; white-space: nowrap; }
         .badge.active { background: #00ff00; color: #000; }
         .badge.error { background: #ff0000; color: #fff; }
         .badge.waiting { background: #ffff00; color: #000; }
         
-        .url-box {
-            background: #1a1a1a;
-            padding: 10px;
-            border-radius: 6px;
-            margin: 8px 0;
-            border: 1px solid #333;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        
-        .url-text {
-            font-family: monospace; 
-            font-size: 11px; 
-            color: #888; 
-            word-break: break-all;
-            line-height: 1.4;
-            user-select: all; /* Facilita selección */
-            cursor: text;
-        }
-        
-        .url-actions {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-        
-        .btn-copy {
-            background: #ff6b00;
-            color: #000;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-weight: bold;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .btn-copy:active { transform: scale(0.95); }
+        .url-box { background: #1a1a1a; padding: 10px; border-radius: 6px; margin: 8px 0; border: 1px solid #333; display: flex; flex-direction: column; gap: 8px; }
+        .url-text { font-family: monospace; font-size: 11px; color: #888; word-break: break-all; line-height: 1.4; }
+        .url-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn-copy { background: #ff6b00; color: #000; border: none; padding: 8px 16px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; }
         .btn-copy.copied { background: #00ff00; }
+        .btn-test { background: #333; color: #fff; border: 1px solid #555; padding: 8px 12px; border-radius: 6px; font-size: 12px; text-decoration: none; display: inline-block; }
+        .btn-remove { background: #ff0000; color: #fff; border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         
-        .btn-test {
-            background: #333;
-            color: #fff;
-            border: 1px solid #555;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-        }
+        .empty-state { text-align: center; padding: 40px 20px; color: #555; font-style: italic; }
         
-        .reporter-meta { 
-            display: flex; 
-            justify-content: flex-end; 
-            align-items: center; 
-            font-size: 11px; 
-            color: #666;
-            margin-top: 8px;
-        }
-        
-        .btn-remove {
-            background: #ff0000;
-            color: #fff;
-            border: none;
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            cursor: pointer;
-            font-size: 16px;
-            line-height: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-        
-        .hint { 
-            font-size: 12px; 
-            color: #888; 
-            line-height: 1.4; 
-            padding: 12px; 
-            background: #0f0f0f; 
-            border-radius: 6px; 
-            border-left: 3px solid #ff6b00; 
-            margin-top: 10px; 
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 40px 20px;
-            color: #555;
-            font-style: italic;
-        }
-        
-        /* Debug */
-        .debug-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999; display: none; padding: 20px; overflow-y: auto; font-family: monospace; font-size: 12px; }
-        .debug-overlay.active { display: block; }
-        .debug-close { position: fixed; top: 10px; right: 10px; background: #ff6b00; color: #000; padding: 10px; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-weight: bold; z-index: 10000; cursor: pointer; }
-        .debug-line { margin: 3px 0; border-left: 3px solid transparent; padding-left: 5px; font-size: 11px; }
-        .debug-err { border-left-color: #ff0000; color: #ff5555; }
-        .debug-ok { border-left-color: #00ff00; color: #55ff55; }
-        .debug-info { border-left-color: #ff6b00; color: #ffaa55; }
-        
-        /* RECEPTOR (igual que antes, optimizado) */
+        /* RECEPTOR - OPTIMIZADO RECONEXIÓN */
         .receiver-view { display: none; width: 100vw; height: 100vh; background: #000; position: relative; }
-        .receiver-view.active { display: flex; align-items: center; justify-content: center; }
+        .receiver-view.active { display: block; }
         
-        .video-container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000; position: relative; }
-        #remoteVideo { max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: contain; background: #000; }
+        #remoteVideo { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
         
-        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; z-index: 10; transition: opacity 0.3s; }
+        .overlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.95); z-index: 10; transition: opacity 0.3s;
+        }
         .overlay.hidden { opacity: 0; pointer-events: none; }
+        .overlay.partial { background: rgba(0,0,0,0.7); } /* Para mostrar video debajo pero con controles encima */
+        
         .spinner { width: 50px; height: 50px; border: 4px solid #222; border-top-color: #ff6b00; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .status-text { color: #fff; font-size: 20px; font-weight: 600; margin-bottom: 8px; text-align: center; }
-        .status-detail { color: #666; font-size: 14px; text-align: center; max-width: 80%; line-height: 1.4; margin-bottom: 20px; }
         
-        .top-controls { position: absolute; top: 0; left: 0; width: 100%; padding: 20px; display: flex; justify-content: space-between; align-items: flex-start; z-index: 5; pointer-events: none; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent); }
+        .status-text { color: #fff; font-size: 22px; font-weight: 600; margin-bottom: 10px; text-align: center; }
+        .status-detail { color: #888; font-size: 14px; text-align: center; max-width: 80%; line-height: 1.4; margin-bottom: 20px; }
+        .retry-info { color: #666; font-size: 12px; margin-top: 10px; font-family: monospace; }
+        
+        .top-controls { position: absolute; top: 0; left: 0; width: 100%; padding: 15px 20px; display: flex; justify-content: space-between; align-items: flex-start; z-index: 5; background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent); pointer-events: none; }
         .top-controls > * { pointer-events: auto; }
-        .info-box { background: rgba(0,0,0,0.6); backdrop-filter: blur(10px); padding: 10px 15px; border-radius: 8px; border: 1px solid rgba(255,107,0,0.3); font-size: 12px; }
+        .info-box { background: rgba(0,0,0,0.6); backdrop-filter: blur(10px); padding: 10px 15px; border-radius: 8px; border: 1px solid rgba(255,107,0,0.3); font-size: 12px; max-width: 200px; }
         .info-box .label { color: #ff6b00; font-size: 10px; margin-bottom: 2px; }
-        .info-box .value { color: #fff; font-weight: bold; font-family: monospace; }
+        .info-box .value { color: #fff; font-weight: bold; font-family: monospace; font-size: 14px; }
+        .info-box .sub { color: #666; font-size: 10px; margin-top: 4px; }
+        
         .control-buttons { display: flex; gap: 10px; }
         .icon-btn { width: 44px; height: 44px; border-radius: 50%; background: rgba(255,107,0,0.9); border: none; color: #000; font-size: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
         
-        .fullscreen-fab { position: absolute; bottom: 30px; right: 30px; width: 60px; height: 60px; border-radius: 50%; background: #ff6b00; border: none; color: #000; font-size: 24px; cursor: pointer; z-index: 6; display: none; align-items: center; justify-content: center; }
-        .fullscreen-fab.visible { display: flex; }
-        
-        /* Responsive */
-        @media (min-width: 768px) {
-            .controls { grid-template-columns: repeat(4, 1fr); }
+        /* Estado reconectando - más sutil */
+        .reconnecting-bar {
+            position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
+            background: rgba(255,107,0,0.9); color: #000; padding: 8px 16px; border-radius: 20px;
+            font-weight: bold; font-size: 13px; display: none; align-items: center; gap: 8px;
+            z-index: 6; box-shadow: 0 2px 10px rgba(0,0,0,0.5);
         }
+        .reconnecting-bar.visible { display: flex; }
+        .mini-spinner { width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.3); border-top-color: #000; border-radius: 50%; animation: spin 1s linear infinite; }
         
-        @media (max-width: 480px) {
-            .title { font-size: 16px; }
-            .reporter-list { max-height: 40vh; }
+        .big-btn { 
+            background: #ff6b00; color: #000; border: none; padding: 12px 24px; 
+            border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; 
+            margin-top: 15px; 
         }
+        .big-btn.secondary { background: #333; color: #fff; }
     </style>
 </head>
 <body>
@@ -332,24 +134,20 @@
     <!-- EMISOR -->
     <div id="broadcastView" class="broadcast-view">
         <header>
-            <div>
-                <div class="title">📡 RETORNO P2P <span style="font-size:12px;color:#666;">v3.2</span></div>
-                <div class="subtitle">Scroll habilitado | Botón Copiar</div>
-            </div>
-            <button onclick="toggleDebug()" style="background:#222;color:#ff6b00;border:1px solid #ff6b00;padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;">DEBUG</button>
+            <div class="title">📡 RETORNO P2P <span style="font-size:12px;color:#666;">v4.0</span></div>
+            <button onclick="toggleDebug()" style="background:#222;color:#ff6b00;border:1px solid #ff6b00;padding:5px 10px;border-radius:4px;font-size:11px;">DEBUG</button>
         </header>
         
         <div class="status-bar">
-            <div class="status-indicator">
-                <div id="srvDot" class="dot yellow"></div>
+            <div>
+                <span id="srvDot" class="dot yellow"></span>
                 <span id="srvText">Conectando...</span>
             </div>
-            <div class="status-indicator" style="margin-left:auto;">
-                <span id="reporterCount" style="color:#888;">0 reporteros</span>
+            <div style="margin-left:auto;color:#888;">
+                <span id="reporterCount">0 reporteros</span>
             </div>
         </div>
         
-        <!-- Contenedor scrollable -->
         <div class="scroll-container">
             <div class="card">
                 <div class="preview-box">
@@ -359,7 +157,7 @@
                 </div>
                 
                 <div class="quality-display">
-                    <span>Calidad: <strong id="qualityText">360p</strong> (~0.5 Mbps/cada uno)</span>
+                    <span>Calidad: <strong id="qualityText">360p</strong> (~0.5 Mbps)</span>
                     <button onclick="changeQuality()" style="padding:6px 12px;font-size:12px;">Cambiar</button>
                 </div>
                 
@@ -368,70 +166,60 @@
                     <button onclick="startSource('screen')" id="btnScreen">🖥️ Pantalla</button>
                     <button onclick="startSource('camera')" id="btnCamera">📷 WebCam</button>
                 </div>
-                
-                <div class="hint">
-                    <strong>Instrucciones:</strong><br>
-                    1. Selecciona fuente arriba<br>
-                    2. Agrega reporteros abajo<br>
-                    3. <strong>Usa el botón naranja "📋 Copiar"</strong> para compartir el enlace por WhatsApp<br>
-                    4. Cuando el reportero abre el link, conecta automáticamente
-                </div>
             </div>
             
             <div class="card">
-                <div style="font-size:14px;font-weight:600;margin-bottom:12px;color:#ff6b00;display:flex;align-items:center;gap:8px;">
-                    ➕ Agregar Reportero
-                </div>
+                <div style="font-size:14px;font-weight:600;margin-bottom:12px;color:#ff6b00;">Agregar Reportero</div>
                 <div class="input-group">
                     <input type="text" id="newId" placeholder="ID único (ej: JUAN1)" onkeypress="if(event.key==='Enter')addReporter()">
                     <button class="primary" onclick="addReporter()" id="btnAdd" disabled style="white-space:nowrap;">CREAR</button>
                 </div>
                 
                 <div class="reporter-list" id="reporterList">
-                    <div class="empty-state">No hay reporteros aún. Crea uno arriba ↑</div>
+                    <div class="empty-state">Sin reporteros</div>
                 </div>
             </div>
-            
-            <!-- Espacio al final para que no se corte el último elemento -->
             <div style="height: 50px;"></div>
         </div>
     </div>
 
-    <!-- RECEPTOR -->
+    <!-- RECEPTOR CON RECONEXIÓN -->
     <div id="receiverView" class="receiver-view">
         <div id="overlay" class="overlay">
-            <div class="spinner"></div>
+            <div class="spinner" id="mainSpinner"></div>
             <div class="status-text" id="mainStatus">Iniciando...</div>
-            <div class="status-detail" id="subStatus">Conectando a servidor</div>
+            <div class="status-detail" id="subStatus">Conectando al servidor P2P</div>
+            <div class="retry-info" id="retryInfo"></div>
+            <button id="manualReconnectBtn" class="big-btn" style="display:none;" onclick="manualReconnect()">🔄 Reconectar Ahora</button>
         </div>
         
-        <div class="video-container">
-            <video id="remoteVideo" autoplay playsinline></video>
+        <video id="remoteVideo" autoplay playsinline></video>
+        
+        <div id="reconnectingBar" class="reconnecting-bar">
+            <div class="mini-spinner"></div>
+            <span>Reconectando...</span>
         </div>
         
         <div class="top-controls">
             <div class="info-box">
                 <div class="label">SEÑAL DE RETORNO</div>
                 <div class="value" id="infoId">--</div>
-                <div style="font-size:10px;color:#666;margin-top:4px;" id="infoRes">Esperando...</div>
+                <div class="sub" id="infoStatus">Iniciando...</div>
             </div>
             <div class="control-buttons">
                 <button class="icon-btn" onclick="toggleDebug()">🐛</button>
                 <button class="icon-btn" onclick="toggleFullscreen()">⛶</button>
             </div>
         </div>
-        
-        <button id="fullscreenBtn" class="fullscreen-fab" onclick="toggleFullscreen()">⛶</button>
     </div>
 
     <script>
-        // Logger
         const logs = [];
         function log(msg, type='info') {
             const t = new Date().toLocaleTimeString();
             const line = `[${t}] ${msg}`;
             logs.unshift({type, text: line});
-            if (logs.length > 30) logs.pop();
+            if (logs.length > 40) logs.pop();
             const content = document.getElementById('debugContent');
             if (content) content.innerHTML = logs.map(l => `<div class="debug-line debug-${l.type}">${l.text}</div>`).join('');
             console.log(line);
@@ -454,7 +242,6 @@
             }
         });
         
-        // Config
         const iceServers = [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
@@ -533,7 +320,7 @@
                             height: { max: cfg.height },
                             frameRate: { max: cfg.frameRate }
                         });
-                    } catch(e) { log('No se pudo limitar pantalla', 'err'); }
+                    } catch(e) { }
                     
                     track.onended = () => {
                         log('Pantalla detenida');
@@ -587,7 +374,6 @@
             
             if (localStream) connectToReporter(id);
             
-            // Scroll al final para ver el nuevo reportero
             setTimeout(() => {
                 const list = document.getElementById('reporterList');
                 list.scrollTop = list.scrollHeight;
@@ -597,23 +383,20 @@
         async function copyToClipboard(text, btn) {
             try {
                 await navigator.clipboard.writeText(text);
-                const original = btn.innerHTML;
                 btn.innerHTML = '✓ ¡Copiado!';
                 btn.classList.add('copied');
                 setTimeout(() => {
-                    btn.innerHTML = original;
+                    btn.innerHTML = '📋 Copiar';
                     btn.classList.remove('copied');
                 }, 2000);
-                log('URL copiada al portapapeles', 'ok');
             } catch (err) {
-                // Fallback para dispositivos sin clipboard API
                 const textArea = document.createElement("textarea");
                 textArea.value = text;
                 document.body.appendChild(textArea);
                 textArea.select();
                 document.execCommand('copy');
                 document.body.removeChild(textArea);
-                btn.textContent = '✓ ¡Copiado!';
+                btn.textContent = '✓ Copiado';
                 setTimeout(() => btn.textContent = '📋 Copiar', 2000);
             }
         }
@@ -674,7 +457,7 @@
         function renderReporters() {
             const list = document.getElementById('reporterList');
             if (connections.size === 0) {
-                list.innerHTML = '<div class="empty-state">No hay reporteros aún. Crea uno arriba ↑</div>';
+                list.innerHTML = '<div class="empty-state">Sin reporteros</div>';
                 document.getElementById('reporterCount').textContent = '0 reporteros';
                 return;
             }
@@ -682,18 +465,18 @@
             list.innerHTML = '';
             connections.forEach(conn => {
                 const div = document.createElement('div');
-                div.className = 'reporter-item ' + (conn.status === 'active' ? 'active' : conn.status === 'error' ? 'error' : '');
+                div.className = 'reporter-item ' + conn.status;
                 div.innerHTML = `
                     <div class="reporter-header">
                         <div class="reporter-id">${conn.id}</div>
                         <span class="badge ${conn.status}">${conn.status}</span>
-                        <button class="btn-remove" onclick="removeReporter('${conn.id}')" title="Eliminar">×</button>
+                        <button class="btn-remove" onclick="removeReporter('${conn.id}')">×</button>
                     </div>
                     <div class="url-box">
                         <div class="url-text">${conn.url}</div>
                         <div class="url-actions">
-                            <button class="btn-copy" onclick="copyToClipboard('${conn.url}', this)">📋 Copiar URL</button>
-                            <a href="${conn.url}" target="_blank" class="btn-test">↗ Abrir</a>
+                            <button class="btn-copy" onclick="copyToClipboard('${conn.url}', this)">📋 Copiar</button>
+                            <a href="${conn.url}" target="_blank" class="btn-test">Probar</a>
                         </div>
                     </div>
                 `;
@@ -703,66 +486,209 @@
             document.getElementById('reporterCount').textContent = connections.size + ' reporteros';
         }
         
-        // ==================== RECEPTOR ====================
+        // ==================== RECEPTOR CON RECONEXIÓN ROBUSTA ====================
+        let reconnectAttempts = 0;
+        let maxReconnectAttempts = 50; // 5 minutos aprox (con 6s de intervalo)
+        let reconnectInterval = null;
+        let isConnected = false;
+        let currentCall = null;
+        
         function initReceiver(myId) {
             log('Receptor: ' + myId);
-            updateStatus('Conectando...', 'Iniciando P2P');
+            updateStatus('Iniciando...', 'Conectando al servidor');
             
-            peer = new Peer(myId, { host: '0.peerjs.com', port: 443, secure: true, config: { iceServers } });
+            peer = new Peer(myId, { 
+                host: '0.peerjs.com', 
+                port: 443, 
+                secure: true, 
+                config: { iceServers },
+                debug: 1
+            });
             
             peer.on('open', (id) => {
                 log('✓ Listo: ' + id, 'ok');
-                updateStatus('Esperando operador...', 'Dale este ID al operador: ' + id);
+                updateStatus('Esperando operador...', 'El operador debe conectarse a este ID');
+                startReconnectSystem();
             });
             
             peer.on('error', (err) => {
                 log('✗ ' + err.type, 'err');
-                if (err.type === 'unavailable-id') showError('ID en uso. Usa otro (?id=OTRO)');
+                if (err.type === 'unavailable-id') {
+                    updateStatus('Error: ID en uso', 'Usa un ID diferente en la URL (?id=OTRO)');
+                } else if (err.type === 'network' || err.type === 'disconnected') {
+                    updateStatus('Reconectando...', 'Pérdida de conexión con servidor');
+                    peer.reconnect();
+                }
+            });
+            
+            peer.on('disconnected', () => {
+                log('Desconectado del servidor', 'err');
+                isConnected = false;
+                showReconnectingState();
+                peer.reconnect();
             });
             
             peer.on('call', (call) => {
-                log('📞 Llamada de ' + call.peer);
-                updateStatus('Recibiendo...', 'Estableciendo conexión');
+                log('📞 Llamada entrante de: ' + call.peer);
                 
-                call.answer(null);
+                // Si ya tenemos una llamada activa, cerrarla primero (para permitir reconexión)
+                if (currentCall) {
+                    log('Cerrando llamada anterior para aceptar nueva', 'info');
+                    currentCall.close();
+                }
                 
-                let gotStream = false;
-                call.on('stream', (stream) => {
-                    gotStream = true;
-                    handleStream(stream);
-                });
-                
-                call.on('close', () => { if (gotStream) lostSignal(); });
-                
-                setTimeout(() => { if (!gotStream) showError('No se recibió video. Recarga.'); }, 12000);
+                currentCall = call;
+                handleIncomingCall(call);
             });
         }
         
-        function handleStream(stream) {
+        function handleIncomingCall(call) {
+            // Contestar sin enviar nada
+            call.answer(null);
+            
+            updateStatus('Conectando...', 'Estableciendo canal de video');
+            hideReconnectingState();
+            
+            let gotStream = false;
+            let connectionTimeout = null;
+            
+            // Timeout de seguridad - si no llega stream en 15s, mostrar error
+            connectionTimeout = setTimeout(() => {
+                if (!gotStream) {
+                    log('Timeout: No llegó stream en 15s', 'err');
+                    // No mostrar error fatal, permitir reintento
+                    showReconnectingState();
+                }
+            }, 15000);
+            
+            call.on('stream', (stream) => {
+                gotStream = true;
+                clearTimeout(connectionTimeout);
+                handleStreamActive(stream);
+            });
+            
+            call.on('close', () => {
+                log('Llamada cerrada por operador', 'info');
+                handleStreamLost();
+            });
+            
+            call.on('error', (err) => {
+                log('Error en llamada: ' + err.message, 'err');
+                handleStreamLost();
+            });
+        }
+        
+        function handleStreamActive(stream) {
+            isConnected = true;
+            reconnectAttempts = 0; // Resetear contador al conectar exitosamente
+            
             const video = document.getElementById('remoteVideo');
             video.srcObject = stream;
+            
             video.onloadedmetadata = () => {
-                document.getElementById('infoRes').textContent = `${video.videoWidth}x${video.videoHeight} | 16:9`;
+                log(`✓ Video activo: ${video.videoWidth}x${video.videoHeight}`, 'ok');
                 document.getElementById('overlay').classList.add('hidden');
-                document.getElementById('fullscreenBtn').classList.add('visible');
+                document.getElementById('infoStatus').textContent = '✓ Recibiendo señal';
+                document.getElementById('infoStatus').style.color = '#00ff00';
             };
-            setInterval(() => { if (video.paused) video.play().catch(e => {}); }, 1000);
+            
+            // Detectar si el track se cierra (operador detiene cámara)
+            stream.getVideoTracks().forEach(track => {
+                track.onended = () => {
+                    log('Track de video finalizado', 'err');
+                    handleStreamLost();
+                };
+            });
+            
+            // Keep alive
+            setInterval(() => {
+                if (video.paused && isConnected) {
+                    video.play().catch(e => {});
+                }
+            }, 2000);
+        }
+        
+        function handleStreamLost() {
+            isConnected = false;
+            currentCall = null;
+            
+            // NO ocultar el video inmediatamente, puede reconectar rápido
+            showReconnectingState();
+            
+            // Iniciar sistema de reconexión automática
+            startReconnectSystem();
+        }
+        
+        function showReconnectingState() {
+            // Mostrar barra sutil arriba en lugar de pantalla completa
+            document.getElementById('reconnectingBar').classList.add('visible');
+            document.getElementById('infoStatus').textContent = '⚠ Señal perdida - Reconectando...';
+            document.getElementById('infoStatus').style.color = '#ffff00';
+            
+            // Si pasan 10 segundos sin reconectar, mostrar overlay parcial
+            setTimeout(() => {
+                if (!isConnected) {
+                    document.getElementById('overlay').classList.remove('hidden');
+                    document.getElementById('mainSpinner').style.display = 'none'; // Ocultar spinner grande
+                    document.getElementById('mainStatus').textContent = 'Esperando operador...';
+                    document.getElementById('subStatus').textContent = 'La conexión se perdió. Intentando reconectar automáticamente...';
+                    document.getElementById('manualReconnectBtn').style.display = 'inline-block';
+                    updateRetryInfo();
+                }
+            }, 10000);
+        }
+        
+        function hideReconnectingState() {
+            document.getElementById('reconnectingBar').classList.remove('visible');
+            document.getElementById('overlay').classList.add('hidden');
+            document.getElementById('mainSpinner').style.display = 'block';
+            document.getElementById('manualReconnectBtn').style.display = 'none';
+        }
+        
+        function startReconnectSystem() {
+            // Cancelar intervalo anterior si existe
+            if (reconnectInterval) clearInterval(reconnectInterval);
+            
+            reconnectInterval = setInterval(() => {
+                if (isConnected) {
+                    clearInterval(reconnectInterval);
+                    reconnectInterval = null;
+                    return;
+                }
+                
+                reconnectAttempts++;
+                updateRetryInfo();
+                
+                log(`Reintento ${reconnectAttempts}/${maxReconnectAttempts}...`);
+                
+                // Intentar reconectar peer si está desconectado
+                if (peer && peer.disconnected) {
+                    peer.reconnect();
+                }
+                
+                // Si llegamos al máximo, sugerir recarga manual
+                if (reconnectAttempts >= maxReconnectAttempts) {
+                    clearInterval(reconnectInterval);
+                    document.getElementById('subStatus').innerHTML = 'No se pudo reconectar automáticamente.<br><button onclick="location.reload()" class="big-btn" style="margin-top:10px;">Recargar Página</button>';
+                }
+                
+            }, 6000); // Cada 6 segundos
+        }
+        
+        function updateRetryInfo() {
+            const info = document.getElementById('retryInfo');
+            if (info) {
+                info.textContent = `Intento ${reconnectAttempts} - Reconexión automática activa`;
+            }
+        }
+        
+        function manualReconnect() {
+            location.reload();
         }
         
         function updateStatus(main, sub) {
             document.getElementById('mainStatus').textContent = main;
             document.getElementById('subStatus').textContent = sub;
-        }
-        
-        function showError(msg) {
-            document.querySelector('.spinner').style.display = 'none';
-            document.getElementById('subStatus').innerHTML = '<span style="color:#ff0000">' + msg + '</span><br><button onclick="location.reload()" style="margin-top:10px;padding:8px 16px;background:#ff6b00;color:#000;border:none;border-radius:4px;cursor:pointer;">Reintentar</button>';
-        }
-        
-        function lostSignal() {
-            document.getElementById('overlay').classList.remove('hidden');
-            updateStatus('Reconectando...', 'Señal perdida');
-            setTimeout(() => location.reload(), 3000);
         }
         
         function toggleFullscreen() {
