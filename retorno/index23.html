@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>StreamCall P2P Fix v2</title>
+    
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        body { background: #000; color: white; font-family: 'Inter', sans-serif; margin: 0; padding: 0; height: 100vh; overflow: hidden; }
+        
+        .director-layout { display: flex; flex-direction: column; height: 100vh; background: #0f172a; }
+        .header { background: #1e293b; padding: 15px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        
+        .main-grid { flex: 1; display: grid; grid-template-columns: 1fr 350px; gap: 20px; padding: 20px; overflow: hidden; }
+        @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } }
+        
+        .preview-area { background: #000; border: 2px solid #3b82f6; border-radius: 12px; overflow: hidden; position: relative; aspect-ratio: 16/9; }
+        .preview-video { width: 100%; height: 100%; object-fit: contain; }
+        
+        .sidebar { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+        .receiver-box { background: #1e293b; border: 2px solid #334155; border-radius: 8px; padding: 12px; transition: all 0.3s; }
+        .receiver-box.streaming { border-color: #10b981; background: rgba(16, 185, 129, 0.1); }
+        
+        .rec-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .rec-status { font-size: 11px; padding: 3px 8px; border-radius: 12px; font-weight: bold; }
+        .status-offline { background: #64748b; color: white; }
+        .status-connected { background: #f59e0b; color: black; }
+        .status-streaming { background: #10b981; color: black; }
+        
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 12px; transition: all 0.2s; }
+        .btn-red { background: #ef4444; color: white; }
+        .btn-green { background: #10b981; color: black; }
+        .btn-blue { background: #3b82f6; color: white; }
+        .btn-sm { padding: 4px 8px; font-size: 11px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .log-box { background: #000; border: 1px solid #334155; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 11px; color: #94a3b8; height: 120px; overflow-y: auto; margin-top: 10px; }
+        .log-line { margin-bottom: 3px; padding-left: 5px; border-left: 2px solid transparent; }
+        .log-ok { border-color: #10b981; color: #10b981; }
+        .log-err { border-color: #ef4444; color: #ef4444; }
+        .log-warn { border-color: #f59e0b; color: #f59e0b; }
+        .log-info { border-color: #3b82f6; color: #3b82f6; }
+        
+        /* Viewer */
+        .viewer-container { width: 100vw; height: 100vh; background: #0f172a; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        
+        .debug-panel { background: rgba(0,0,0,0.95); border-bottom: 2px solid #3b82f6; padding: 15px; font-family: monospace; font-size: 13px; max-height: 35vh; overflow-y: auto; z-index: 100; }
+        .debug-line { margin-bottom: 4px; }
+        
+        .video-wrapper { flex: 1; background: #000; display: flex; align-items: center; justify-content: center; position: relative; }
+        .video-el { width: 100%; height: 100%; object-fit: contain; }
+        
+        .overlay-status { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 50; }
+        .spinner { width: 50px; height: 50px; border: 4px solid #1e293b; border-top: 4px solid #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        
+        .big-btn { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); background: #3b82f6; color: white; border: none; padding: 15px 40px; border-radius: 30px; font-weight: bold; font-size: 16px; cursor: pointer; z-index: 60; box-shadow: 0 4px 20px rgba(59, 130, 246, 0.5); }
+        
+        .live-badge { position: absolute; top: 20px; right: 20px; background: #ef4444; color: white; padding: 8px 16px; border-radius: 8px; font-weight: bold; z-index: 40; animation: pulse 2s infinite; }
+        
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+        
+        const PEER_CONFIG = {
+            host: '0.peerjs.com',
+            port: 443,
+            secure: true,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            }
+        };
+        
+        const useLog = () => {
+            const [logs, setLogs] = useState([]);
+            const add = useCallback((msg, type='info') => {
+                const t = new Date().toLocaleTimeString('en-GB');
+                setLogs(prev => [...prev.slice(-25), {t, msg, type}]);
+                console.log(`[${type}] ${msg}`);
+            }, []);
+            return { logs, add };
+        };
+        
+        // ==================== DIRECTOR (EMISOR) ====================
+        const Director = ({ room }) => {
+            const { logs, add } = useLog();
+            const [stream, setStream] = useState(null);
+            const [isBroadcasting, setIsBroadcasting] = useState(false);
+            const [receivers, setReceivers] = useState({});
+            const [source, setSource] = useState('camera');
+            
+            const peerRef = useRef(null);
+            const streamRef = useRef(null);
+            const videoRef = useRef(null);
+            const isBroadcastingRef = useRef(false); // Ref para valor actual sin delay
+            
+            useEffect(() => {
+                if (videoRef.current && stream) {
+                    videoRef.current.srcObject = stream;
+                }
+            }, [stream]);
+            
+            // Inicializar Peer
+            useEffect(() => {
+                const id = `dir-${room}`;
+                add(`Iniciando Director: ${id}`, 'info');
+                
+                peerRef.current = new Peer(id, PEER_CONFIG);
+                
+                peerRef.current.on('open', () => {
+                    add('✅ Director online', 'ok');
+                });
+                
+                peerRef.current.on('error', err => {
+                    add(`❌ Error: ${err.type}`, 'err');
+                });
+                
+                // CUANDO UN VIEWER SE CONECTA
+                peerRef.current.on('connection', conn => {
+                    const slot = conn.peer.split('-').pop();
+                    add(`🔗 Viewer #${slot} conectado (señal)`, 'ok');
+                    
+                    // Guardar referencia
+                    setReceivers(prev => ({
+                        ...prev,
+                        [slot]: { slot, conn, status: 'connected', call: null }
+                    }));
+                    
+                    // ESCUCHAR SOLICITUDES EXPLÍCITAS DEL VIEWER
+                    conn.on('data', (data) => {
+                        add(`📨 De #${slot}: ${data}`, 'info');
+                        
+                        if (data === 'READY_FOR_STREAM') {
+                            add(`📡 #${slot} solicita video`, 'warn');
+                            
+                            // VERIFICAR SI ESTAMOS TRANSMITIENDO AHORA MISMO
+                            if (streamRef.current && isBroadcastingRef.current) {
+                                add(`✅ Enviando stream a #${slot}...`, 'ok');
+                                sendStreamToViewer(slot, conn);
+                            } else {
+                                add(`⏳ #${slot} esperando (broadcast no iniciado)`, 'warn');
+                                conn.send('BROADCAST_NOT_STARTED');
+                            }
+                        }
+                    });
+                    
+                    conn.on('close', () => {
+                        add(`❌ #${slot} desconectado`, 'err');
+                        setReceivers(prev => ({
+                            ...prev,
+                            [slot]: { ...prev[slot], status: 'offline' }
+                        }));
+                    });
+                });
+                
+                return () => peerRef.current?.destroy();
+            }, [room, add]);
+            
+            // Enviar stream a un viewer específico
+            const sendStreamToViewer = useCallback((slot, conn) => {
+                if (!peerRef.current || !streamRef.current) return;
+                
+                const viewerId = `view-${room}-${slot}`;
+                
+                try {
+                    // Crear la llamada de media
+                    const call = peerRef.current.call(viewerId, streamRef.current);
+                    
+                    if (!call) {
+                        add(`❌ Falló llamada a #${slot}`, 'err');
+                        return;
+                    }
+                    
+                    add(`📞 Llamada iniciada a #${slot}`, 'ok');
+                    
+                    setReceivers(prev => ({
+                        ...prev,
+                        [slot]: { ...prev[slot], status: 'streaming', call }
+                    }));
+                    
+                    call.on('stream', (remoteStream) => {
+                        // Esto no debería pasar en el Director (el viewer no envía video)
+                        add(`⚠️ #${slot} envió stream inesperado`, 'warn');
+                    });
+                    
+                    call.on('error', err => {
+                        add(`❌ Error llamada #${slot}: ${err.type || err}`, 'err');
+                        setReceivers(prev => ({
+                            ...prev,
+                            [slot]: { ...prev[slot], status: 'connected' }
+                        }));
+                    });
+                    
+                    call.on('close', () => {
+                        add(`📴 Llamada cerrada #${slot}`, 'err');
+                        setReceivers(prev => ({
+                            ...prev,
+                            [slot]: { ...prev[slot], status: 'connected', call: null }
+                        }));
+                    });
+                    
+                } catch (e) {
+                    add(`❌ Excepción enviando a #${slot}: ${e.message}`, 'err');
+                }
+            }, [room, add]);
+            
+            const startBroadcast = async () => {
+                try {
+                    let s;
+                    if (source === 'screen') {
+                        add('Abriendo selector de pantalla...', 'info');
+                        s = await navigator.mediaDevices.getDisplayMedia({
+                            video: { width: 1280, height: 720, aspectRatio: 16/9 },
+                            audio: true
+                        });
+                        s.getVideoTracks()[0].onended = () => stopBroadcast();
+                        add('✅ Pantalla capturada', 'ok');
+                    } else {
+                        s = await navigator.mediaDevices.getUserMedia({
+                            video: { width: 1280, height: 720, aspectRatio: 16/9 },
+                            audio: true
+                        });
+                        add('✅ Cámara iniciada', 'ok');
+                    }
+                    
+                    streamRef.current = s;
+                    setStream(s);
+                    setIsBroadcasting(true);
+                    isBroadcastingRef.current = true;
+                    
+                    const settings = s.getVideoTracks()[0]?.getSettings();
+                    add(`🎬 Broadcast: ${settings?.width}x${settings?.height}`, 'ok');
+                    
+                    // Notificar a viewers conectados que ya pueden pedir video
+                    Object.entries(receivers).forEach(([slot, rec]) => {
+                        if (rec.conn?.open) {
+                            add(`Notificando a #${slot}...`, 'info');
+                            rec.conn.send('BROADCAST_STARTED');
+                        }
+                    });
+                    
+                } catch (e) {
+                    add(`❌ Error: ${e.name} - ${e.message}`, 'err');
+                    alert('Error: ' + e.message);
+                }
+            };
+            
+            const stopBroadcast = () => {
+                streamRef.current?.getTracks().forEach(t => t.stop());
+                streamRef.current = null;
+                setStream(null);
+                setIsBroadcasting(false);
+                isBroadcastingRef.current = false;
+                add('⏹ Broadcast detenido', 'err');
+                
+                // Cerrar llamadas activas
+                Object.values(receivers).forEach(rec => {
+                    if (rec.call) rec.call.close();
+                });
+                setReceivers(prev => 
+                    Object.fromEntries(Object.entries(prev).map(([k,v]) => [k, {...v, status: 'connected', call: null}]))
+                );
+            };
+            
+            const copyLink = slot => {
+                const url = `${window.location.origin}${window.location.pathname}?mode=view&room=${room}&slot=${slot}`;
+                navigator.clipboard.writeText(url);
+                add(`Link #${slot} copiado`, 'ok');
+            };
+            
+            return (
+                <div className="director-layout">
+                    <div className="header">
+                        <div>
+                            <h1 className="text-xl font-bold text-blue-400">DIRECTOR: {room}</h1>
+                            <div className="text-xs text-gray-400">ID: dir-{room}</div>
+                        </div>
+                        <div className="flex gap-2">
+                            <select value={source} onChange={e => setSource(e.target.value)} disabled={isBroadcasting} 
+                                className="bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm">
+                                <option value="camera">📷 Cámara</option>
+                                <option value="screen">🖥️ Pantalla/OBS</option>
+                            </select>
+                            {!isBroadcasting ? 
+                                <button onClick={startBroadcast} className="btn btn-red">🔴 INICIAR</button> :
+                                <button onClick={stopBroadcast} className="btn btn-green">⏹ DETENER</button>
+                            }
+                        </div>
+                    </div>
+                    
+                    <div className="main-grid">
+                        <div>
+                            <div className="preview-area">
+                                {stream ? (
+                                    <>
+                                        <video ref={videoRef} className="preview-video" autoPlay muted playsInline />
+                                        <div className="absolute top-4 left-4 bg-red-600 px-3 py-1 rounded text-xs font-bold animate-pulse">
+                                            EN VIVO
+                                        </div>
+                                        <div className="absolute top-4 right-4 bg-black/80 px-3 py-1 rounded text-xs text-yellow-400">
+                                            {stream?.getVideoTracks()[0]?.getSettings()?.width}x{stream?.getVideoTracks()[0]?.getSettings()?.height}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="flex items-center justify-center h-full text-gray-500 flex-col gap-2">
+                                        <div className="text-4xl">📹</div>
+                                        <div>Preview aparecerá aquí</div>
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="log-box">
+                                {logs.map((l,i) => (
+                                    <div key={i} className={`log-line log-${l.type}`}>
+                                        <span className="opacity-50">[{l.t}]</span> {l.msg}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <div className="sidebar">
+                            <h3 className="font-bold text-gray-300 mb-2">RECEPTORES</h3>
+                            {[1,2,3,4,5,6,7,8,9,10].map(num => {
+                                const rec = receivers[num];
+                                const status = rec?.status || 'offline';
+                                return (
+                                    <div key={num} className={`receiver-box ${status === 'streaming' ? 'streaming' : ''}`}>
+                                        <div className="rec-header">
+                                            <span className="font-bold text-lg">#{num}</span>
+                                            <span className={`rec-status ${
+                                                status === 'offline' ? 'status-offline' : 
+                                                status === 'streaming' ? 'status-streaming' : 'status-connected'
+                                            }`}>
+                                                {status === 'offline' ? 'OFFLINE' : 
+                                                 status === 'streaming' ? '✓ VIDEO' : 'SIN VIDEO'}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between items-center mt-2">
+                                            <span className="text-xs text-gray-400">
+                                                {status === 'streaming' ? 'Recibiendo señal...' : 
+                                                 status === 'connected' ? 'Esperando video...' : 'Esperando conexión'}
+                                            </span>
+                                            <button onClick={() => copyLink(num)} className="btn btn-blue btn-sm">
+                                                COPIAR LINK
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        // ==================== VIEWER (RECEPTOR) ====================
+        const Viewer = ({ room, slot }) => {
+            const { logs, add } = useLog();
+            const [hasVideo, setHasVideo] = useState(false);
+            const [status, setStatus] = useState('init'); // init, connecting, requesting, receiving, error
+            const [videoRes, setVideoRes] = useState('');
+            
+            const peerRef = useRef(null);
+            const videoRef = useRef(null);
+            const connRef = useRef(null);
+            const retryTimeoutRef = useRef(null);
+            
+            useEffect(() => {
+                const myId = `view-${room}-${slot}`;
+                const dirId = `dir-${room}`;
+                
+                add(`ID: ${myId}`, 'info');
+                add(`Objetivo: ${dirId}`, 'info');
+                
+                // 1. Crear Peer
+                peerRef.current = new Peer(myId, PEER_CONFIG);
+                setStatus('init');
+                
+                peerRef.current.on('open', () => {
+                    add('✅ Peer listo', 'ok');
+                    setStatus('connecting');
+                    
+                    // 2. Conectar al Director (solo datos)
+                    const conn = peerRef.current.connect(dirId, { reliable: true });
+                    connRef.current = conn;
+                    
+                    conn.on('open', () => {
+                        add('✅ Conectado al Director', 'ok');
+                        setStatus('requesting');
+                        requestStream();
+                    });
+                    
+                    conn.on('data', (data) => {
+                        add(`📨 Director: ${data}`, 'info');
+                        
+                        if (data === 'BROADCAST_STARTED') {
+                            add('Director inició broadcast, solicitando...', 'ok');
+                            requestStream();
+                        }
+                        else if (data === 'BROADCAST_NOT_STARTED') {
+                            add('⏳ Director no ha iniciado aún', 'warn');
+                        }
+                    });
+                    
+                    conn.on('close', () => {
+                        add('❌ Conexión cerrada', 'err');
+                        setStatus('error');
+                        scheduleReconnect();
+                    });
+                    
+                    conn.on('error', (err) => {
+                        add(`❌ Error conn: ${err}`, 'err');
+                    });
+                });
+                
+                // 3. Recibir llamada de video
+                peerRef.current.on('call', (call) => {
+                    add('📞 Llamada entrante!', 'ok');
+                    
+                    // Responder sin enviar nuestro stream (solo recibir)
+                    call.answer(null);
+                    
+                    call.on('stream', (remoteStream) => {
+                        add(`✅ Stream recibido! ${remoteStream.id}`, 'ok');
+                        
+                        if (videoRef.current) {
+                            videoRef.current.srcObject = remoteStream;
+                            
+                            const settings = remoteStream.getVideoTracks()[0]?.getSettings();
+                            if (settings) {
+                                setVideoRes(`${settings.width}x${settings.height}`);
+                            }
+                            
+                            // Play con manejo de errores
+                            videoRef.current.play().then(() => {
+                                add('▶️ Video reproduciendo', 'ok');
+                                setHasVideo(true);
+                                setStatus('receiving');
+                            }).catch(e => {
+                                add(`⚠️ Autoplay bloqueado: ${e.message}`, 'warn');
+                                videoRef.current.muted = true;
+                                videoRef.current.play().then(() => {
+                                    add('▶️ Reproduciendo (muted)', 'ok');
+                                    setHasVideo(true);
+                                    setStatus('receiving');
+                                    setTimeout(() => {
+                                        if (videoRef.current) videoRef.current.muted = false;
+                                        add('🔊 Audio activado', 'ok');
+                                    }, 500);
+                                });
+                            });
+                        }
+                    });
+                    
+                    call.on('error', (err) => {
+                        add(`❌ Error llamada: ${err}`, 'err');
+                        setStatus('error');
+                    });
+                    
+                    call.on('close', () => {
+                        add('📴 Llamada cerrada', 'err');
+                        setHasVideo(false);
+                        setStatus('error');
+                        scheduleReconnect();
+                    });
+                });
+                
+                peerRef.current.on('error', (err) => {
+                    if (err.type === 'unavailable-id') {
+                        add('ID ocupado, recargando...', 'err');
+                        window.location.reload();
+                    } else {
+                        add(`❌ Peer error: ${err.type}`, 'err');
+                    }
+                });
+                
+                // Limpiar
+                return () => {
+                    clearTimeout(retryTimeoutRef.current);
+                    peerRef.current?.destroy();
+                };
+            }, [room, slot, add]);
+            
+            const requestStream = () => {
+                if (connRef.current?.open) {
+                    add('📤 Enviando READY_FOR_STREAM', 'warn');
+                    connRef.current.send('READY_FOR_STREAM');
+                    
+                    // Si no recibimos video en 6 segundos, reintentar
+                    clearTimeout(retryTimeoutRef.current);
+                    retryTimeoutRef.current = setTimeout(() => {
+                        if (!hasVideo && status !== 'receiving') {
+                            add('⏳ Timeout, re-solicitando...', 'warn');
+                            requestStream();
+                        }
+                    }, 6000);
+                } else {
+                    add('❌ Sin conexión para solicitar', 'err');
+                }
+            };
+            
+            const scheduleReconnect = () => {
+                clearTimeout(retryTimeoutRef.current);
+                retryTimeoutRef.current = setTimeout(() => {
+                    add('🔄 Intentando reconectar...', 'warn');
+                    window.location.reload();
+                }, 3000);
+            };
+            
+            const manualReconnect = () => {
+                window.location.reload();
+            };
+            
+            return (
+                <div className="viewer-container">
+                    {/* Debug Panel */}
+                    <div className="debug-panel">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="font-bold text-blue-400">DEBUG | Sala: {room} | Receptor: #{slot}</span>
+                            <span className={`px-2 py-1 rounded text-xs ${
+                                status === 'receiving' ? 'bg-green-600' : 
+                                status === 'error' ? 'bg-red-600' : 'bg-yellow-600'
+                            }`}>
+                                {status.toUpperCase()}
+                            </span>
+                        </div>
+                        <div>
+                            {logs.map((l,i) => (
+                                <div key={i} className="debug-line" style={{color: 
+                                    l.type === 'ok' ? '#4ade80' : 
+                                    l.type === 'err' ? '#f87171' : 
+                                    l.type === 'warn' ? '#fbbf24' : '#94a3b8'
+                                }}>
+                                    [{l.t}] {l.msg}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    
+                    {/* Video Area */}
+                    <div className="video-wrapper">
+                        {!hasVideo && status !== 'receiving' && (
+                            <div className="overlay-status">
+                                <div className="spinner"></div>
+                                <div className="text-xl font-bold mb-2">
+                                    {status === 'error' ? 'ERROR DE CONEXIÓN' : 
+                                     status === 'requesting' ? 'SOLICITANDO VIDEO...' : 
+                                     'CONECTANDO...'}
+                                </div>
+                                <div className="text-gray-400 text-sm text-center max-w-md px-4">
+                                    {status === 'error' ? 'Toca el botón azul para reintentar' : 
+                                     'Esperando respuesta del Director'}
+                                </div>
+                            </div>
+                        )}
+                        
+                        <video 
+                            ref={videoRef} 
+                            className="video-el" 
+                            playsInline 
+                            autoPlay 
+                            style={{opacity: hasVideo ? 1 : 0, transition: 'opacity 0.5s'}}
+                        />
+                        
+                        {hasVideo && (
+                            <>
+                                <div className="live-badge">● EN VIVO</div>
+                                <div className="absolute top-20 right-5 bg-black/80 px-3 py-1 rounded text-xs text-gray-300">
+                                    {videoRes}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                    
+                    {/* Botón de acción */}
+                    {!hasVideo && (
+                        <button onClick={manualReconnect} className="big-btn">
+                            {status === 'error' ? '🔁 RECONECTAR' : '⏳ ESPERANDO...'}
+                        </button>
+                    )}
+                    
+                    {hasVideo && (
+                        <button 
+                            onClick={() => {
+                                if (videoRef.current) {
+                                    videoRef.current.requestFullscreen?.() || 
+                                    videoRef.current.webkitRequestFullscreen?.();
+                                }
+                            }} 
+                            className="big-btn"
+                            style={{background: '#10b981'}}
+                        >
+                            ⛶ PANTALLA COMPLETA
+                        </button>
+                    )}
+                </div>
+            );
+        };
+        
+        // ==================== ROUTER ====================
+        const App = () => {
+            const [state, setState] = useState({mode:null, room:null, slot:null});
+            
+            useEffect(() => {
+                const p = new URLSearchParams(window.location.search);
+                const m = p.get('mode');
+                const r = p.get('room');
+                const s = p.get('slot');
+                
+                if (m === 'director' && r) {
+                    setState({mode:'director', room:r});
+                } else if (m === 'view' && r && s) {
+                    setState({mode:'view', room:r, slot:s});
+                } else {
+                    setState({mode:'lobby', room: Math.random().toString(36).substring(2,6).toUpperCase()});
+                }
+            }, []);
+            
+            if (state.mode === 'director') return <Director room={state.room} />;
+            if (state.mode === 'view') return <Viewer room={state.room} slot={state.slot} />;
+            
+            return (
+                <div className="flex items-center justify-center h-screen bg-slate-900">
+                    <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 max-w-md w-full mx-4 text-center">
+                        <h1 className="text-3xl font-bold text-blue-400 mb-2">STREAM P2P</h1>
+                        <p className="text-gray-400 mb-6 text-sm">Transmisión directa sin servidor</p>
+                        
+                        <input 
+                            value={state.room} 
+                            onChange={e => setState({...state, room: e.target.value.toUpperCase()})}
+                            className="w-full bg-black border-2 border-slate-600 rounded p-4 text-center text-xl font-bold mb-4 text-white uppercase tracking-wider"
+                            placeholder="NOMBRE SALA"
+                        />
+                        
+                        <button 
+                            onClick={() => window.location.href = `?mode=director&room=${state.room}`}
+                            className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-4 rounded-lg text-lg transition-colors"
+                        >
+                            🎬 INICIAR COMO DIRECTOR
+                        </button>
+                        
+                        <div className="mt-6 text-slate-500 text-xs">
+                            <p className="mb-2">INSTRUCCIONES:</p>
+                            <ol className="text-left space-y-1 pl-4 list-decimal">
+                                <li>Crea una sala e inicia transmisión</li>
+                                <li>Copia los links para los receptores</li>
+                                <li>Los receptores abren el link y ven automáticamente</li>
+                                <li>Sin necesidad de cámara en el receptor</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
