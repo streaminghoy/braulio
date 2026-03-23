@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>StreamCall Broadcast (1 a 10 Receptores)</title>
+    
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { background-color: #050505; color: white; font-family: 'Inter', sans-serif; margin: 0; padding: 0; height: 100vh; overflow: hidden; }
+        
+        /* Forzar 16:9 en todos los contenedores de video */
+        .video-box { aspect-ratio: 16/9; background: #000; position: relative; overflow: hidden; }
+        
+        .lobby-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; background: #0f172a; padding: 20px; text-align: center; }
+        .glass-box { background: rgba(30, 41, 59, 0.9); padding: 40px; border-radius: 16px; border: 1px solid #334155; box-shadow: 0 20px 50px rgba(0,0,0,0.5); max-width: 450px; width: 100%; }
+        input { width: 100%; background: #000; border: 2px solid #334155; color: white; padding: 15px; border-radius: 8px; font-size: 1.2rem; text-align: center; font-weight: bold; margin-bottom: 20px; outline: none; text-transform: uppercase; }
+        
+        .btn { width: 100%; padding: 12px; font-weight: 900; font-size: 0.85rem; border-radius: 8px; cursor: pointer; border: none; transition: 0.2s; text-transform: uppercase; }
+        .btn-blue { background: #3b82f6; color: white; }
+        .btn-green { background: #10b981; color: black; }
+        .btn-red { background: #ef4444; color: white; }
+        .btn-purple { background: #8b5cf6; color: white; }
+        .btn-orange { background: #f59e0b; color: black; }
+        .btn-gray { background: #334155; color: white; border: 1px solid #475569; }
+        
+        .director-layout { display: flex; flex-direction: column; height: 100vh; background: #0f172a; }
+        .director-header { background: #1e293b; border-bottom: 1px solid #334155; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+        .broadcast-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; padding: 20px; overflow-y: auto; }
+        
+        .receiver-card { background: #1e293b; border: 2px solid #334155; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+        .receiver-header { padding: 10px 15px; background: #0f172a; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
+        .receiver-status { font-size: 0.75rem; font-weight: bold; padding: 4px 10px; border-radius: 20px; }
+        .status-online { background: #10b981; color: black; }
+        .status-offline { background: #64748b; color: white; }
+        .status-live { background: #ef4444; color: white; animation: pulse 2s infinite; }
+        
+        .preview-monitor { width: 100%; height: 180px; background: #000; border-bottom: 2px solid #334155; position: relative; }
+        .preview-video { width: 100%; height: 100%; object-fit: contain; }
+        .broadcast-badge { position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; }
+        
+        .source-selector { display: flex; gap: 10px; margin-bottom: 15px; }
+        .source-btn { flex: 1; padding: 10px; border: 2px solid #334155; background: #0f172a; color: #94a3b8; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.8rem; }
+        .source-btn.active { border-color: #3b82f6; color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
+        
+        .link-box { background: #000; border: 1px solid #334155; padding: 8px; border-radius: 6px; font-size: 0.7rem; word-break: break-all; color: #64748b; margin-top: 10px; cursor: pointer; }
+        .link-box:hover { color: white; border-color: #3b82f6; }
+        
+        /* Viewer Layout (Receptor) */
+        .viewer-layout { width: 100vw; height: 100vh; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        .viewer-video { width: 100%; height: 100%; object-fit: contain; }
+        .viewer-controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 100; opacity: 0; transition: opacity 0.3s; }
+        .viewer-layout:hover .viewer-controls { opacity: 1; }
+        .control-btn { background: rgba(0,0,0,0.8); border: 1px solid #475569; color: white; padding: 12px 20px; border-radius: 30px; cursor: pointer; font-weight: bold; backdrop-filter: blur(10px); }
+        
+        .connecting-screen { position: absolute; inset: 0; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 50; }
+        .spinner { width: 50px; height: 50px; border: 4px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        
+        .quality-badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: #fbbf24; padding: 5px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; z-index: 10; }
+        
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        
+        /* Fullscreen override */
+        .viewer-layout:fullscreen { background: #000; }
+        .viewer-layout:-webkit-full-screen { background: #000; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        
+        const PEER_CONFIG = { 
+            config: { 
+                'iceServers': [
+                    { urls: 'stun:stun.l.google.com:19302' }, 
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            } 
+        };
+        
+        const MAX_RECEIVERS = 10;
+        const MAX_RESOLUTION = { width: 1280, height: 720, frameRate: 30 };
+
+        // --- DIRECTOR (EMISOR) ---
+        const DirectorView = ({ roomName }) => {
+            const [isBroadcasting, setIsBroadcasting] = useState(false);
+            const [sourceType, setSourceType] = useState('camera'); // 'camera' | 'screen'
+            const [broadcastStream, setBroadcastStream] = useState(null);
+            const [receivers, setReceivers] = useState(Array(MAX_RECEIVERS).fill(null).map((_, i) => ({
+                id: i + 1,
+                connected: false,
+                peerId: `sc_viewer_${roomName.toUpperCase()}_${i + 1}`,
+                call: null
+            })));
+            const [quality, setQuality] = useState('720'); // '360' | '720'
+            
+            const peer = useRef(null);
+            const streamRef = useRef(null);
+
+            // Inicializar Peer
+            useEffect(() => {
+                const directorId = `sc_director_${roomName.toUpperCase()}`;
+                peer.current = new Peer(directorId, PEER_CONFIG);
+                
+                peer.current.on('open', (id) => {
+                    console.log('Director online:', id);
+                });
+
+                // Cuando un viewer intenta conectar (solo señalización)
+                peer.current.on('connection', (conn) => {
+                    const slotMatch = conn.peer.match(/_(\d+)$/);
+                    if (slotMatch) {
+                        const slotId = parseInt(slotMatch[1]);
+                        if (slotId >= 1 && slotId <= MAX_RECEIVERS) {
+                            setReceivers(prev => {
+                                const newReceivers = [...prev];
+                                newReceivers[slotId - 1] = { 
+                                    ...newReceivers[slotId - 1], 
+                                    connected: true 
+                                };
+                                return newReceivers;
+                            });
+                            
+                            conn.on('close', () => {
+                                setReceivers(prev => {
+                                    const newReceivers = [...prev];
+                                    newReceivers[slotId - 1] = { 
+                                        ...newReceivers[slotId - 1], 
+                                        connected: false,
+                                        call: null
+                                    };
+                                    return newReceivers;
+                                });
+                            });
+
+                            // Si ya estamos transmitiendo, enviar el stream inmediatamente
+                            if (streamRef.current && isBroadcasting) {
+                                startCallToReceiver(slotId, streamRef.current);
+                            }
+                        }
+                    }
+                });
+
+                return () => {
+                    peer.current?.destroy();
+                    streamRef.current?.getTracks().forEach(t => t.stop());
+                };
+            }, [roomName, isBroadcasting]);
+
+            const getMediaConstraints = () => {
+                const res = quality === '360' ? { width: 640, height: 360 } : { width: 1280, height: 720 };
+                return {
+                    video: { 
+                        width: { ideal: res.width, max: MAX_RESOLUTION.width }, 
+                        height: { ideal: res.height, max: MAX_RESOLUTION.height },
+                        frameRate: { max: MAX_RESOLUTION.frameRate },
+                        aspectRatio: { exact: 16/9 }
+                    },
+                    audio: sourceType === 'screen' ? true : { echoCancellation: true, noiseSuppression: true }
+                };
+            };
+
+            const startBroadcast = async () => {
+                try {
+                    let stream;
+                    const constraints = getMediaConstraints();
+                    
+                    if (sourceType === 'screen') {
+                        stream = await navigator.mediaDevices.getDisplayMedia({
+                            video: constraints.video,
+                            audio: true
+                        });
+                        
+                        // Detectar cuando el usuario detiene la pantalla
+                        stream.getVideoTracks()[0].onended = () => {
+                            stopBroadcast();
+                        };
+                    } else {
+                        stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    }
+                    
+                    streamRef.current = stream;
+                    setBroadcastStream(stream);
+                    setIsBroadcasting(true);
+                    
+                    // Enviar a todos los receptores ya conectados
+                    receivers.forEach((rec, idx) => {
+                        if (rec.connected) {
+                            startCallToReceiver(idx + 1, stream);
+                        }
+                    });
+                    
+                } catch (err) {
+                    console.error('Error iniciando broadcast:', err);
+                    alert('Error al acceder a la fuente de video. Verifica permisos.');
+                }
+            };
+
+            const startCallToReceiver = (slotId, stream) => {
+                const peerId = `sc_viewer_${roomName.toUpperCase()}_${slotId}`;
+                const call = peer.current.call(peerId, stream);
+                
+                setReceivers(prev => {
+                    const newReceivers = [...prev];
+                    newReceivers[slotId - 1] = { ...newReceivers[slotId - 1], call };
+                    return newReceivers;
+                });
+            };
+
+            const stopBroadcast = () => {
+                streamRef.current?.getTracks().forEach(t => t.stop());
+                streamRef.current = null;
+                setBroadcastStream(null);
+                setIsBroadcasting(false);
+                
+                // Cerrar todas las llamadas
+                receivers.forEach(rec => {
+                    if (rec.call) rec.call.close();
+                });
+            };
+
+            const copyLink = (slotId) => {
+                const url = `${window.location.href.split('?')[0]}?mode=viewer&room=${roomName}&slot=${slotId}`;
+                navigator.clipboard.writeText(url);
+                alert(`Link para Receptor ${slotId} copiado al portapapeles`);
+            };
+
+            const getSourceLabel = () => {
+                if (sourceType === 'screen') return '🖥️ PANTALLA/OBS';
+                return '📹 CÁMARA WEB';
+            };
+
+            return (
+                <div className="director-layout">
+                    <div className="director-header">
+                        <div>
+                            <h1 className="text-2xl font-black text-blue-400 uppercase tracking-tighter">STREAM BROADCAST</h1>
+                            <p className="text-gray-400 text-sm font-bold">SALA: {roomName.toUpperCase()} | MAX: 10 RECEPTORES | 16:9 | {quality}p</p>
+                        </div>
+                        
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <select 
+                                value={quality} 
+                                onChange={(e) => setQuality(e.target.value)}
+                                disabled={isBroadcasting}
+                                className="bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm"
+                            >
+                                <option value="360">360p (Ahorro ancho de banda)</option>
+                                <option value="720">720p HD (Calidad media)</option>
+                            </select>
+                            
+                            <div className="source-selector">
+                                <button 
+                                    className={`source-btn ${sourceType === 'camera' ? 'active' : ''}`}
+                                    onClick={() => setSourceType('camera')}
+                                    disabled={isBroadcasting}
+                                >
+                                    📹 CÁMARA
+                                </button>
+                                <button 
+                                    className={`source-btn ${sourceType === 'screen' ? 'active' : ''}`}
+                                    onClick={() => setSourceType('screen')}
+                                    disabled={isBroadcasting}
+                                >
+                                    🖥️ PANTALLA/OBS
+                                </button>
+                            </div>
+                            
+                            {!isBroadcasting ? (
+                                <button className="btn btn-red" onClick={startBroadcast} style={{minWidth: '150px'}}>
+                                    🔴 INICIAR BROADCAST
+                                </button>
+                            ) : (
+                                <button className="btn btn-green" onClick={stopBroadcast} style={{minWidth: '150px'}}>
+                                    ⏹ DETENER
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="broadcast-grid">
+                        {/* Preview del Director */}
+                        <div className="receiver-card" style={{border: '2px solid #3b82f6'}}>
+                            <div className="receiver-header">
+                                <span className="font-bold text-blue-400">PREVIEW (TU SEÑAL)</span>
+                                <span className="receiver-status status-live">AL AIRE</span>
+                            </div>
+                            <div className="video-box preview-monitor">
+                                {broadcastStream ? (
+                                    <>
+                                        <video 
+                                            className="preview-video" 
+                                            autoPlay 
+                                            muted 
+                                            playsInline 
+                                            ref={el => { if(el) el.srcObject = broadcastStream; }}
+                                        />
+                                        <div className="broadcast-badge">TRANSMITIENDO {quality}p</div>
+                                    </>
+                                ) : (
+                                    <div className="flex items-center justify-center h-full text-gray-500 font-bold">
+                                        {getSourceLabel()} - PREPARADO
+                                    </div>
+                                )}
+                            </div>
+                            <div className="p-4 text-center text-xs text-gray-400">
+                                Fuente: {getSourceLabel()} | Resolución: {quality}p | Aspecto: 16:9
+                            </div>
+                        </div>
+
+                        {/* Slots para Receptores 1-10 */}
+                        {receivers.map((rec) => (
+                            <div key={rec.id} className="receiver-card">
+                                <div className="receiver-header">
+                                    <span className="font-bold text-gray-300">RECEPTOR {rec.id}</span>
+                                    <span className={`receiver-status ${rec.connected ? 'status-online' : 'status-offline'}`}>
+                                        {rec.connected ? 'CONECTADO' : 'ESPERANDO'}
+                                    </span>
+                                </div>
+                                <div className="video-box" style={{height: '150px', background: '#0f172a'}}>
+                                    <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+                                        <div className="text-3xl mb-2">📱</div>
+                                        <div className="text-sm font-bold text-gray-400">Slot {rec.id}</div>
+                                        {rec.connected && (
+                                            <div className="text-xs text-green-400 mt-1">
+                                                {isBroadcasting ? 'Recibiendo señal...' : 'Conectado (esperando broadcast)'}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="p-3">
+                                    <button className="btn btn-blue text-xs !py-2" onClick={() => copyLink(rec.id)}>
+                                        COPIAR LINK RECEPTOR {rec.id}
+                                    </button>
+                                    <div className="text-[10px] text-gray-500 mt-2 text-center">
+                                        PC, Tablet o Teléfono solo reciben (no envían)
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        // --- VIEWER (RECEPTOR PURO) ---
+        const ViewerView = ({ roomName, slotId }) => {
+            const [connectionStatus, setConnectionStatus] = useState('connecting'); // 'connecting' | 'connected' | 'disconnected' | 'waiting'
+            const [remoteStream, setRemoteStream] = useState(null);
+            const [isFullscreen, setIsFullscreen] = useState(false);
+            const [signalStrength, setSignalStrength] = useState(0);
+            
+            const peer = useRef(null);
+            const videoRef = useRef(null);
+            const conn = useRef(null);
+            const containerRef = useRef(null);
+
+            useEffect(() => {
+                const viewerId = `sc_viewer_${roomName.toUpperCase()}_${slotId}`;
+                const directorId = `sc_director_${roomName.toUpperCase()}`;
+                
+                peer.current = new Peer(viewerId, PEER_CONFIG);
+                
+                peer.current.on('open', () => {
+                    console.log('Viewer conectado:', viewerId);
+                    
+                    // Conectar con el director para avisar que estamos online
+                    conn.current = peer.current.connect(directorId, { reliable: false });
+                    conn.current.on('open', () => {
+                        setConnectionStatus('waiting'); // Esperando que el director inicie broadcast
+                    });
+                    
+                    conn.current.on('close', () => {
+                        setConnectionStatus('disconnected');
+                    });
+                });
+
+                // Recibir la llamada del director (stream de video)
+                peer.current.on('call', (call) => {
+                    setConnectionStatus('connected');
+                    
+                    // Answer sin stream local (solo recibimos)
+                    call.answer(null); 
+                    
+                    call.on('stream', (stream) => {
+                        setRemoteStream(stream);
+                        if (videoRef.current) {
+                            videoRef.current.srcObject = stream;
+                        }
+                    });
+                    
+                    call.on('close', () => {
+                        setConnectionStatus('waiting');
+                        setRemoteStream(null);
+                    });
+                });
+
+                peer.current.on('error', (err) => {
+                    console.error('Peer error:', err);
+                    setConnectionStatus('disconnected');
+                });
+
+                // Intentar reconexión cada 5 segundos si está desconectado
+                const reconnectInterval = setInterval(() => {
+                    if (connectionStatus === 'disconnected' && conn.current && !conn.current.open) {
+                        conn.current = peer.current.connect(directorId, { reliable: false });
+                    }
+                }, 5000);
+
+                return () => {
+                    clearInterval(reconnectInterval);
+                    peer.current?.destroy();
+                };
+            }, [roomName, slotId]);
+
+            const toggleFullscreen = () => {
+                if (!document.fullscreenElement) {
+                    containerRef.current?.requestFullscreen();
+                    setIsFullscreen(true);
+                } else {
+                    document.exitFullscreen();
+                    setIsFullscreen(false);
+                }
+            };
+
+            return (
+                <div ref={containerRef} className="viewer-layout">
+                    {connectionStatus === 'connecting' && (
+                        <div className="connecting-screen">
+                            <div className="spinner"></div>
+                            <h2 className="text-xl font-bold mb-2">CONECTANDO A SALA {roomName}</h2>
+                            <p className="text-gray-400">Slot receptor: {slotId}</p>
+                        </div>
+                    )}
+                    
+                    {connectionStatus === 'waiting' && (
+                        <div className="connecting-screen">
+                            <div className="text-6xl mb-4">⏳</div>
+                            <h2 className="text-xl font-bold mb-2">CONECTADO - ESPERANDO SEÑAL</h2>
+                            <p className="text-gray-400 text-center max-w-md px-4">
+                                El director aún no ha iniciado el broadcast.<br/>
+                                Mantén esta ventana abierta.
+                            </p>
+                        </div>
+                    )}
+                    
+                    {connectionStatus === 'disconnected' && (
+                        <div className="connecting-screen" style={{background: '#450a0a'}}>
+                            <div className="text-6xl mb-4">⚠️</div>
+                            <h2 className="text-xl font-bold mb-2 text-red-400">CONEXIÓN PERDIDA</h2>
+                            <button className="btn btn-blue mt-4" onClick={() => window.location.reload()}>
+                                RECONECTAR
+                            </button>
+                        </div>
+                    )}
+
+                    {remoteStream && (
+                        <>
+                            <video 
+                                ref={videoRef}
+                                className="viewer-video" 
+                                autoPlay 
+                                playsInline 
+                                style={{ objectFit: isFullscreen ? 'contain' : 'cover' }}
+                            />
+                            
+                            <div className="quality-badge">
+                                RECEPTOR {slotId} | {remoteStream.getVideoTracks()[0]?.getSettings().width || '?'}p
+                            </div>
+                            
+                            <div className="viewer-controls">
+                                <button className="control-btn" onClick={toggleFullscreen}>
+                                    {isFullscreen ? '⛶ SALIR PANTALLA COMPLETA' : '⛶ PANTALLA COMPLETA'}
+                                </button>
+                                <button className="control-btn" style={{background: 'rgba(59, 130, 246, 0.9)'}}>
+                                    📶 {connectionStatus === 'connected' ? 'EN VIVO' : '...'}
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            );
+        };
+
+        // --- APP ROUTER ---
+        const App = () => {
+            const [appState, setAppState] = useState({ mode: null, room: null, slot: '1' });
+
+            useEffect(() => {
+                const params = new URLSearchParams(window.location.search);
+                const m = params.get('mode'); 
+                const r = params.get('room');
+                const s = params.get('slot') || '1';
+                
+                if (m && r) { 
+                    setAppState({ mode: m, room: r, slot: s });
+                } else {
+                    setAppState({ mode: 'lobby', room: Math.random().toString(36).substring(2, 6).toUpperCase(), slot: '1' });
+                }
+            }, []);
+
+            if (appState.mode === 'director') return <DirectorView roomName={appState.room} />;
+            if (appState.mode === 'viewer') return <ViewerView roomName={appState.room} slotId={appState.slot} />;
+            
+            if (appState.mode === 'lobby') {
+                return (
+                    <div className="lobby-container">
+                        <div className="glass-box">
+                            <h1 className="text-3xl font-black mb-2 uppercase text-blue-500 tracking-tighter">STREAM BROADCAST</h1>
+                            <p className="text-gray-400 text-sm mb-6">1 Emisor → 10 Receptores | Sin login | 16:9</p>
+                            
+                            <input 
+                                value={appState.room} 
+                                onChange={(e) => setAppState({...appState, room: e.target.value.toUpperCase()})} 
+                                placeholder="NOMBRE DE SALA" 
+                            />
+                            
+                            <button 
+                                className="btn btn-red w-full py-4 text-lg mb-4" 
+                                onClick={() => window.location.href=`?mode=director&room=${appState.room}`}
+                            >
+                                🎬 ABRIR DASHBOARD DIRECTOR
+                            </button>
+                            
+                            <div className="text-xs text-gray-500 mt-4 text-left">
+                                <p className="font-bold mb-2">INSTRUCCIONES:</p>
+                                <ol className="list-decimal pl-4 space-y-1">
+                                    <li>Crea una sala como Director</li>
+                                    <li>Selecciona fuente: Cámara o Pantalla (OBS/vMix)</li>
+                                    <li>Copia los links para hasta 10 receptores</li>
+                                    <li>Los receptores solo ven, no necesitan cámara</li>
+                                    <li>Máximo calidad 720p, forzado 16:9</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+            return null;
+        };
+        
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
