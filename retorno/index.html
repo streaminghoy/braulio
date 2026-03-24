@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Retorno Clean Viewer</title>
+    
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; color: white; font-family: 'Inter', -apple-system, sans-serif; overflow: hidden; }
+        
+        /* Viewer limpio */
+        .viewer-container { width: 100vw; height: 100vh; position: relative; background: #000; }
+        .video-el { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+        
+        /* Loading simple */
+        .loading-overlay { 
+            position: absolute; inset: 0; background: #0f172a; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            z-index: 50; transition: opacity 0.5s;
+        }
+        .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+        
+        .spinner { 
+            width: 40px; height: 40px; border: 3px solid #1e293b; 
+            border-top-color: #3b82f6; border-radius: 50%; 
+            animation: spin 1s linear infinite; margin-bottom: 15px; 
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .loading-text { font-size: 14px; color: #94a3b8; letter-spacing: 1px; }
+        
+        /* Badge discreto */
+        .live-badge { 
+            position: absolute; top: 20px; right: 20px; 
+            background: rgba(239, 68, 68, 0.9); color: white; 
+            padding: 6px 12px; border-radius: 20px; 
+            font-size: 12px; font-weight: bold; letter-spacing: 1px;
+            z-index: 40; animation: pulse 2s infinite;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .live-dot { width: 6px; height: 6px; background: white; border-radius: 50%; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        
+        /* Controles inferiores */
+        .controls { 
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); 
+            display: flex; gap: 12px; z-index: 60;
+            opacity: 0; transition: opacity 0.3s;
+        }
+        .viewer-container:hover .controls, .viewer-container:active .controls { opacity: 1; }
+        
+        .control-btn { 
+            background: rgba(0,0,0,0.8); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2); color: white; 
+            padding: 12px 24px; border-radius: 30px; 
+            font-size: 14px; font-weight: 600; cursor: pointer;
+            display: flex; align-items: center; gap: 8px;
+            transition: all 0.2s;
+        }
+        .control-btn:active { transform: scale(0.95); }
+        .control-btn.active { background: rgba(16, 185, 129, 0.9); border-color: #10b981; color: black; }
+        
+        /* Overlay para activar audio (requerido en móviles) */
+        .audio-overlay {
+            position: absolute; inset: 0; background: rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: center; 
+            z-index: 70; backdrop-filter: blur(5px);
+            transition: opacity 0.3s;
+        }
+        .audio-overlay.hidden { opacity: 0; pointer-events: none; }
+        
+        .audio-btn { 
+            background: #3b82f6; color: white; border: none;
+            padding: 16px 32px; border-radius: 50px; 
+            font-size: 16px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 20px rgba(59,130,246,0.5);
+            display: flex; align-items: center; gap: 10px;
+        }
+        
+        /* Indicador de sala discreto */
+        .room-info {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(0,0,0,0.6); padding: 8px 12px;
+            border-radius: 8px; font-size: 12px; color: #94a3b8;
+            z-index: 40; opacity: 0.7;
+        }
+        
+        /* Error simple */
+        .error-screen {
+            position: absolute; inset: 0; background: #0f172a;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100;
+        }
+        .error-btn {
+            margin-top: 20px; background: #3b82f6; color: white;
+            border: none; padding: 12px 30px; border-radius: 25px;
+            font-size: 14px; font-weight: bold; cursor: pointer;
+        }
+        
+        /* ========== CAMBIO CLAVE: Ocultar todo en pantalla completa ========== */
+        .viewer-container.fullscreen-clean .live-badge,
+        .viewer-container.fullscreen-clean .room-info,
+        .viewer-container.fullscreen-clean .controls,
+        .viewer-container.fullscreen-clean .audio-overlay {
+            display: none !important;
+        }
+        
+        /* Director styles (sin cambios) */
+        .director-layout { display: flex; flex-direction: column; height: 100vh; background: #0f172a; }
+        .dir-header { background: #1e293b; padding: 15px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+        .dir-content { flex: 1; display: grid; grid-template-columns: 1fr 300px; gap: 20px; padding: 20px; overflow: hidden; }
+        @media (max-width: 900px) { .dir-content { grid-template-columns: 1fr; } }
+        
+        .preview-box { background: #000; border: 2px solid #3b82f6; border-radius: 12px; overflow: hidden; aspect-ratio: 16/9; position: relative; }
+        .rec-grid { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+        .rec-card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .rec-card.streaming { border-color: #10b981; background: rgba(16,185,129,0.1); }
+        
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 12px; }
+        .btn-red { background: #ef4444; color: white; }
+        .btn-green { background: #10b981; color: black; }
+        .btn-blue { background: #3b82f6; color: white; }
+        
+        .log-box { background: #000; border: 1px solid #334155; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 11px; color: #94a3b8; height: 100px; overflow-y: auto; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+        
+        const PEER_CONFIG = {
+            host: '0.peerjs.com',
+            port: 443,
+            secure: true,
+            config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+        };
+        
+        const useLog = () => {
+            const [logs, setLogs] = useState([]);
+            const add = useCallback((msg, type='info') => {
+                console.log(`[${type}] ${msg}`); // Solo consola, no pantalla
+            }, []);
+            return { add };
+        };
+        
+        // ==================== DIRECTOR (SIN CAMBIOS) ====================
+        const Director = ({ room }) => {
+            const [stream, setStream] = useState(null);
+            const [isBroadcasting, setIsBroadcasting] = useState(false);
+            const [receivers, setReceivers] = useState({});
+            const [source, setSource] = useState('camera');
+            const [logs, setLogs] = useState([]);
+            
+            const addLog = (msg) => {
+                const t = new Date().toLocaleTimeString('en-GB').split(' ')[0];
+                setLogs(prev => [...prev.slice(-15), `[${t}] ${msg}`]);
+                console.log(msg);
+            };
+            
+            const peerRef = useRef(null);
+            const streamRef = useRef(null);
+            const videoRef = useRef(null);
+            const broadcastingRef = useRef(false);
+            
+            useEffect(() => {
+                if (videoRef.current && stream) videoRef.current.srcObject = stream;
+            }, [stream]);
+            
+            useEffect(() => {
+                const id = `dir-${room}`;
+                addLog(`Director: ${id}`);
+                
+                peerRef.current = new Peer(id, PEER_CONFIG);
+                
+                peerRef.current.on('connection', conn => {
+                    const slot = conn.peer.split('-').pop();
+                    addLog(`Viewer #${slot} conectado`);
+                    
+                    setReceivers(prev => ({ ...prev, [slot]: { slot, conn, status: 'connected' } }));
+                    
+                    conn.on('data', data => {
+                        if (data === 'READY_FOR_STREAM') {
+                            addLog(`#${slot} pide video`);
+                            if (streamRef.current && broadcastingRef.current) {
+                                sendToViewer(slot);
+                            } else {
+                                conn.send('WAITING');
+                            }
+                        }
+                    });
+                    
+                    conn.on('close', () => {
+                        setReceivers(prev => ({ ...prev, [slot]: { ...prev[slot], status: 'offline' } }));
+                    });
+                });
+                
+                return () => peerRef.current?.destroy();
+            }, [room]);
+            
+            const sendToViewer = useCallback((slot) => {
+                if (!peerRef.current || !streamRef.current) return;
+                const vid = `view-${room}-${slot}`;
+                
+                addLog(`Enviando a #${slot}...`);
+                const call = peerRef.current.call(vid, streamRef.current);
+                
+                setReceivers(prev => ({ ...prev, [slot]: { ...prev[slot], status: 'streaming', call } }));
+                
+                call.on('close', () => {
+                    setReceivers(prev => ({ ...prev, [slot]: { ...prev[slot], status: 'connected' } }));
+                });
+            }, [room]);
+            
+            const startBroadcast = async () => {
+                try {
+                    let s;
+                    if (source === 'screen') {
+                        s = await navigator.mediaDevices.getDisplayMedia({ video: { width: 1280, height: 720 }, audio: true });
+                        s.getVideoTracks()[0].onended = () => stopBroadcast();
+                    } else {
+                        s = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: true });
+                    }
+                    
+                    streamRef.current = s;
+                    setStream(s);
+                    setIsBroadcasting(true);
+                    broadcastingRef.current = true;
+                    addLog('Broadcast iniciado');
+                    
+                    Object.entries(receivers).forEach(([slot, rec]) => {
+                        if (rec.conn?.open) sendToViewer(slot);
+                    });
+                } catch (e) {
+                    addLog(`Error: ${e.message}`);
+                    alert('Error: ' + e.message);
+                }
+            };
+            
+            const stopBroadcast = () => {
+                streamRef.current?.getTracks().forEach(t => t.stop());
+                streamRef.current = null;
+                setStream(null);
+                setIsBroadcasting(false);
+                broadcastingRef.current = false;
+                addLog('Broadcast detenido');
+            };
+            
+            const copyLink = slot => {
+                const url = `${window.location.origin}${window.location.pathname}?mode=view&room=${room}&slot=${slot}`;
+                navigator.clipboard.writeText(url);
+                addLog(`Link #${slot} copiado`);
+            };
+            
+            return (
+                <div className="director-layout">
+                    <div className="dir-header">
+                        <div>
+                            <h1 className="text-xl font-bold text-blue-400">DIRECTOR: {room}</h1>
+                        </div>
+                        <div className="flex gap-2">
+                            <select value={source} onChange={e => setSource(e.target.value)} disabled={isBroadcasting} 
+                                className="bg-black border border-gray-600 rounded px-3 text-white text-sm">
+                                <option value="camera">📷 Cámara</option>
+                                <option value="screen">🖥️ Pantalla</option>
+                            </select>
+                            {!isBroadcasting ? 
+                                <button onClick={startBroadcast} className="btn btn-red">🔴 INICIAR</button> :
+                                <button onClick={stopBroadcast} className="btn btn-green">⏹ DETENER</button>
+                            }
+                        </div>
+                    </div>
+                    
+                    <div className="dir-content">
+                        <div>
+                            <div className="preview-box">
+                                {stream ? <video ref={videoRef} autoPlay muted playsInline style={{width:'100%',height:'100%',objectFit:'contain'}} /> : 
+                                 <div className="flex items-center justify-center h-full text-gray-500">Preview</div>}
+                                {isBroadcasting && <div className="absolute top-4 left-4 bg-red-600 px-3 py-1 rounded text-xs font-bold animate-pulse">EN VIVO</div>}
+                            </div>
+                            <div className="log-box">
+                                {logs.map((l,i) => <div key={i} className="text-xs text-gray-400 mb-1">{l}</div>)}
+                            </div>
+                        </div>
+                        
+                        <div className="rec-grid">
+                            <h3 className="font-bold text-gray-400 text-sm mb-2">RECEPTORES (10)</h3>
+                            {[1,2,3,4,5,6,7,8,9,10].map(n => {
+                                const rec = receivers[n];
+                                const isStreaming = rec?.status === 'streaming';
+                                return (
+                                    <div key={n} className={`rec-card ${isStreaming ? 'streaming' : ''}`}>
+                                        <span className="font-bold">#{n}</span>
+                                        <span className={`text-xs ${isStreaming ? 'text-green-400' : 'text-gray-500'}`}>
+                                            {isStreaming ? '● RECIBIENDO' : rec?.status === 'connected' ? 'Conectado' : 'Off'}
+                                        </span>
+                                        <button onClick={() => copyLink(n)} className="btn btn-blue text-xs">LINK</button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        // ==================== VIEWER (AGREGADO DETECTOR FULLSCREEN) ====================
+        const Viewer = ({ room, slot }) => {
+            const { add } = useLog(); // Solo consola
+            const [isReceiving, setIsReceiving] = useState(false);
+            const [isMuted, setIsMuted] = useState(true);
+            const [showAudioOverlay, setShowAudioOverlay] = useState(false);
+            const [hasError, setHasError] = useState(false);
+            // ========== NUEVO: Estado para detectar pantalla completa ==========
+            const [isFullscreen, setIsFullscreen] = useState(false);
+            
+            const peerRef = useRef(null);
+            const videoRef = useRef(null);
+            const connRef = useRef(null);
+            const currentCallRef = useRef(null);
+            const hasReceivedStreamRef = useRef(false);
+            
+            // ========== NUEVO: useEffect para escuchar cambios de fullscreen ==========
+            useEffect(() => {
+                const handleFullscreenChange = () => {
+                    const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement;
+                    setIsFullscreen(!!fullscreenElement);
+                };
+                
+                document.addEventListener('fullscreenchange', handleFullscreenChange);
+                document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+                document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+                
+                return () => {
+                    document.removeEventListener('fullscreenchange', handleFullscreenChange);
+                    document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+                    document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+                };
+            }, []);
+            
+            useEffect(() => {
+                const myId = `view-${room}-${slot}`;
+                const dirId = `dir-${room}`;
+                
+                add(`Viewer iniciado ${myId}`);
+                
+                peerRef.current = new Peer(myId, PEER_CONFIG);
+                
+                peerRef.current.on('open', () => {
+                    const conn = peerRef.current.connect(dirId, { reliable: true });
+                    connRef.current = conn;
+                    
+                    conn.on('open', () => {
+                        add('Conectado al Director');
+                        if (!hasReceivedStreamRef.current) {
+                            conn.send('READY_FOR_STREAM');
+                        }
+                    });
+                    
+                    conn.on('data', data => {
+                        if (data === 'WAITING') add('Esperando que Director inicie...');
+                    });
+                    
+                    conn.on('close', () => {
+                        if (!hasReceivedStreamRef.current) setHasError(true);
+                    });
+                });
+                
+                peerRef.current.on('call', call => {
+                    // Evitar llamadas duplicadas
+                    if (hasReceivedStreamRef.current && currentCallRef.current) {
+                        call.close();
+                        return;
+                    }
+                    
+                    currentCallRef.current = call;
+                    call.answer(null);
+                    
+                    call.on('stream', remoteStream => {
+                        hasReceivedStreamRef.current = true;
+                        
+                        if (videoRef.current) {
+                            videoRef.current.srcObject = remoteStream;
+                            videoRef.current.muted = true; // Requerido para autoplay
+                            
+                            videoRef.current.play().then(() => {
+                                setIsReceiving(true);
+                                setShowAudioOverlay(true); // Mostrar botón para activar audio
+                            }).catch(() => {
+                                // Si falla autoplay, mostrar overlay de click
+                                setIsReceiving(true);
+                                setShowAudioOverlay(true);
+                            });
+                        }
+                    });
+                    
+                    call.on('close', () => {
+                        setIsReceiving(false);
+                    });
+                    
+                    call.on('error', () => setHasError(true));
+                });
+                
+                peerRef.current.on('error', err => {
+                    if (err.type === 'unavailable-id') window.location.reload();
+                    else setHasError(true);
+                });
+                
+                // Reintentar si no hay stream en 10 segundos
+                const timeout = setTimeout(() => {
+                    if (!hasReceivedStreamRef.current && connRef.current?.open) {
+                        connRef.current.send('READY_FOR_STREAM');
+                    }
+                }, 10000);
+                
+                return () => {
+                    clearTimeout(timeout);
+                    peerRef.current?.destroy();
+                };
+            }, [room, slot]);
+            
+            const enableAudio = () => {
+                if (videoRef.current) {
+                    videoRef.current.muted = false;
+                    setIsMuted(false);
+                    setShowAudioOverlay(false);
+                }
+            };
+            
+            const toggleMute = () => {
+                if (videoRef.current) {
+                    const newMuted = !videoRef.current.muted;
+                    videoRef.current.muted = newMuted;
+                    setIsMuted(newMuted);
+                }
+            };
+            
+            const enterFullscreen = () => {
+                const el = document.documentElement;
+                if (el.requestFullscreen) el.requestFullscreen();
+                else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+                else if (el.mozRequestFullScreen) el.mozRequestFullScreen();
+            };
+            
+            if (hasError) {
+                return (
+                    <div className="error-screen">
+                        <div className="text-4xl mb-4">⚠️</div>
+                        <div className="font-bold text-lg">CONEXIÓN PERDIDA</div>
+                        <button onClick={() => window.location.reload()} className="error-btn">
+                            RECONECTAR
+                        </button>
+                    </div>
+                );
+            }
+            
+            return (
+                // ========== NUEVO: Clase condicional 'fullscreen-clean' ==========
+                <div className={`viewer-container ${isFullscreen ? 'fullscreen-clean' : ''}`}>
+                    {/* Video principal */}
+                    <video 
+                        ref={videoRef} 
+                        className="video-el" 
+                        playsInline 
+                        autoPlay 
+                        muted={isMuted}
+                    />
+                    
+                    {/* Loading (solo al inicio) */}
+                    {!isReceiving && (
+                        <div className="loading-overlay">
+                            <div className="spinner"></div>
+                            <div className="loading-text">CONECTANDO...</div>
+                        </div>
+                    )}
+                    
+                    {/* Badge LIVE (solo cuando hay video) */}
+                    {isReceiving && (
+                        <div className="live-badge">
+                            <span className="live-dot"></span>
+                            EN VIVO
+                        </div>
+                    )}
+                    
+                    {/* Info discreta */}
+                    <div className="room-info">
+                        {room} | #{slot}
+                    </div>
+                    
+                    {/* Overlay para activar audio (requerido en móviles) */}
+                    {isReceiving && showAudioOverlay && (
+                        <div className="audio-overlay" onClick={enableAudio}>
+                            <button className="audio-btn" onClick={enableAudio}>
+                                <span>🔊</span>
+                                <span>TOCAR PARA ACTIVAR AUDIO</span>
+                            </button>
+                        </div>
+                    )}
+                    
+                    {/* Controles (aparecen al tocar pantalla) */}
+                    {isReceiving && (
+                        <div className="controls">
+                            <button onClick={toggleMute} className={`control-btn ${!isMuted ? 'active' : ''}`}>
+                                <span>{isMuted ? '🔇' : '🔊'}</span>
+                                <span>{isMuted ? 'SIN AUDIO' : 'CON AUDIO'}</span>
+                            </button>
+                            <button onClick={enterFullscreen} className="control-btn">
+                                <span>⛶</span>
+                                <span>PANTALLA COMPLETA</span>
+                            </button>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        
+        // ==================== ROUTER ====================
+        const App = () => {
+            const [state, setState] = useState({mode:null, room:null, slot:null});
+            
+            useEffect(() => {
+                const p = new URLSearchParams(window.location.search);
+                const m = p.get('mode'), r = p.get('room'), s = p.get('slot');
+                
+                if (m === 'director' && r) setState({mode:'director', room:r});
+                else if (m === 'view' && r && s) setState({mode:'view', room:r, slot:s});
+                else setState({mode:'lobby', room: Math.random().toString(36).substring(2,6).toUpperCase()});
+            }, []);
+            
+            if (state.mode === 'director') return <Director room={state.room} />;
+            if (state.mode === 'view') return <Viewer room={state.room} slot={state.slot} />;
+            
+            return (
+                <div className="flex items-center justify-center h-screen bg-slate-900">
+                    <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 max-w-md w-full text-center mx-4">
+                        <h1 className="text-3xl font-bold text-blue-400 mb-2">STREAM P2P</h1>
+                        <p className="text-gray-400 text-sm mb-6">Transmisión directa 1 a 10</p>
+                        
+                        <input 
+                            value={state.room} 
+                            onChange={e => setState({...state, room: e.target.value.toUpperCase()})}
+                            className="w-full bg-black border-2 border-slate-600 rounded p-4 text-center text-xl font-bold mb-4 text-white uppercase"
+                            placeholder="NOMBRE SALA"
+                        />
+                        
+                        <button 
+                            onClick={() => window.location.href = `?mode=director&room=${state.room}`}
+                            className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-4 rounded-lg text-lg transition-colors"
+                        >
+                            🎬 INICIAR DIRECTOR
+                        </button>
+                        
+                        <div className="mt-6 text-slate-500 text-xs text-center">
+                            El receptor verá video limpio sin logs técnicos
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
