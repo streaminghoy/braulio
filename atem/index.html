@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stream Splitter V25 (UI Fixed)</title>
+    
+    <!-- LIBRERÍAS -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        body { background-color: #000; color: white; font-family: sans-serif; margin: 0; padding: 0; overflow: hidden; height: 100vh; user-select: none; }
+
+        /* GRILLA PRINCIPAL */
+        #matrix-root {
+            width: 100vw; height: 100vh;
+            display: grid;
+            grid-template-columns: 50% 50%;
+            grid-template-rows: 50% 50%;
+            gap: 10px; 
+            background: #000;
+            padding: 10px;
+            box-sizing: border-box;
+            transition: all 0.3s;
+        }
+
+        /* MODO AIRE (LIMPIO TOTAL) */
+        .clean-mode { cursor: none; } /* Ocultar mouse */
+        
+        .clean-mode #matrix-root {
+            gap: 4px; /* Separación negra fina para vMix */
+            padding: 0;
+            background: black;
+        }
+        .clean-mode .cell { border: none !important; }
+        .clean-mode .cam-tag { display: none !important; }
+        .clean-mode .calib-overlay { display: none !important; } 
+
+        /* CADA CELDA */
+        .cell {
+            position: relative; overflow: hidden;
+            background: #111; 
+            border: 1px dashed #444; 
+            transition: border 0.3s;
+            border-radius: 4px;
+        }
+        .clean-mode .cell { border-radius: 0; }
+        .cell.selected { border: 2px solid #facc15; z-index: 10; }
+
+        /* VIDEO FUENTE */
+        .video-source {
+            position: absolute;
+            transform-origin: top left;
+            max-width: none; max-height: none;
+            width: 100%; height: 100%; 
+            object-fit: cover;
+            will-change: transform;
+            pointer-events: none; 
+            image-rendering: optimizeQuality; /* Forzar calidad */
+        }
+        
+        /* FILTRO DE MEJORA (HD BOOST) */
+        .hd-boost {
+            filter: contrast(1.1) saturate(1.1) brightness(1.05);
+        }
+
+        /* PANEL DE CONTROL FLOTANTE */
+        .controls-panel {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.95); padding: 20px; border-radius: 16px;
+            border: 1px solid #444; box-shadow: 0 10px 50px rgba(0,0,0,0.9);
+            z-index: 100; transition: transform 0.3s, opacity 0.3s; width: 90%; max-width: 480px;
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        
+        /* FIX: Selector CSS corregido para ocultar el panel */
+        .controls-panel.hidden-ui { 
+            transform: translate(-50%, 150%); 
+            opacity: 0; 
+            pointer-events: none; 
+        }
+
+        /* BOTÓN DE CERRAR PANEL (X) */
+        .close-panel-btn {
+            position: absolute; top: 10px; right: 10px;
+            width: 30px; height: 30px; border-radius: 50%;
+            background: rgba(255,255,255,0.1); color: #999;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: 0.2s; font-weight: bold; font-size: 14px;
+            border: 1px solid transparent;
+        }
+        .close-panel-btn:hover { background: #ef4444; color: white; border-color: #ef4444; }
+
+        /* D-PAD */
+        .d-pad {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; width: 120px; margin: 0 auto;
+        }
+        .d-btn {
+            background: #334155; border: 1px solid #475569; color: white;
+            height: 40px; border-radius: 6px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+            transition: background 0.1s;
+        }
+        .d-btn:active { background: #3b82f6; border-color: white; }
+
+        .cam-tag {
+            position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); 
+            color: #facc15; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;
+            pointer-events: none; border: 1px solid #facc15; text-shadow: 0 1px 2px black;
+        }
+        
+        input[type=range] { width: 100%; accent-color: #facc15; cursor: pointer; }
+        select { background: #000; border: 1px solid #555; color: white; padding: 8px; border-radius: 6px; width: 100%; }
+        
+        .btn-clean { width: 100%; padding: 12px; background: #22c55e; color: black; font-weight: bold; border-radius: 8px; cursor: pointer; }
+        .btn-atem { width: 100%; padding: 8px; background: #ea580c; color: white; font-weight: bold; border-radius: 6px; font-size: 0.8rem; margin-top: 5px; cursor: pointer; }
+        .btn-boost { width: 100%; padding: 6px; background: #334155; color: #aaa; border: 1px solid #555; font-size: 0.75rem; border-radius: 4px; font-weight: bold; margin-top: 5px; cursor: pointer; }
+        .btn-boost.active { background: #3b82f6; color: white; border-color: #60a5fa; box-shadow: 0 0 10px rgba(59,130,246,0.3); }
+
+        .protocol-warn {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #0f172a; z-index: 9999;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            text-align: center; padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const App = () => {
+            const [devices, setDevices] = useState([]);
+            const [selectedDevice, setSelectedDevice] = useState('');
+            const [cleanMode, setCleanMode] = useState(false);
+            const [selectedCam, setSelectedCam] = useState(0); 
+            const [moveSpeed, setMoveSpeed] = useState(1);
+            const [boost, setBoost] = useState(false); // HD Boost
+            const [isFile, setIsFile] = useState(false);
+
+            // Configuración inicial
+            const [configs, setConfigs] = useState([
+                { id: 0, x: 0, y: 0, scale: 200, label: "CAM 1" },
+                { id: 1, x: -100, y: 0, scale: 200, label: "CAM 2" },
+                { id: 2, x: 0, y: -150, scale: 400, label: "CAM 3" },
+                { id: 3, x: -100, y: -150, scale: 400, label: "CAM 4" }
+            ]);
+
+            const videoRefs = [useRef(null), useRef(null), useRef(null), useRef(null)];
+            const moveInterval = useRef(null);
+
+            // 1. Cargar Dispositivos & Listeners
+            useEffect(() => {
+                if (window.location.protocol === 'file:') return setIsFile(true);
+                
+                navigator.mediaDevices.enumerateDevices().then(devs => {
+                    const vids = devs.filter(d => d.kind === 'videoinput');
+                    setDevices(vids);
+                    if(vids.length > 0) setSelectedDevice(vids[0].deviceId);
+                });
+                
+                const saved = localStorage.getItem('splitter_v24_cfg');
+                if(saved) setConfigs(JSON.parse(saved));
+
+                // Listener ESCAPE Global
+                const handleKey = (e) => {
+                    if(e.key === 'Escape') setCleanMode(false);
+                };
+                window.addEventListener('keydown', handleKey);
+                return () => window.removeEventListener('keydown', handleKey);
+            }, []);
+
+            useEffect(() => {
+                localStorage.setItem('splitter_v24_cfg', JSON.stringify(configs));
+            }, [configs]);
+
+            // 2. Preset ATEM
+            const applyAtemPreset = () => {
+                const zoom = 400; const yOffset = -150; 
+                setConfigs([
+                    { id: 0, x: 0, y: 0, scale: 200, label: "CAM 1" },
+                    { id: 1, x: -100, y: 0, scale: 200, label: "CAM 2" },
+                    { id: 2, x: 0, y: -300, scale: 400, label: "CAM 3" },
+                    { id: 3, x: -100, y: -300, scale: 400, label: "CAM 4" }
+                ]);
+            };
+
+            const startCamera = async () => {
+                if(!selectedDevice) return;
+                try {
+                    // INTENTO 1: Pedir 4K
+                    const s = await navigator.mediaDevices.getUserMedia({
+                        video: { 
+                            deviceId: { exact: selectedDevice }, 
+                            width: { ideal: 3840 }, height: { ideal: 2160 } 
+                        }
+                    });
+                    assignStream(s);
+                } catch(e) { 
+                    console.log("4K no soportado, intentando 1080p...");
+                    try {
+                        const s2 = await navigator.mediaDevices.getUserMedia({
+                            video: { deviceId: { exact: selectedDevice }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+                        });
+                        assignStream(s2);
+                    } catch(ex) { alert("Error: Cámara en uso o no disponible."); }
+                }
+            };
+
+            const assignStream = (stream) => {
+                videoRefs.forEach(ref => {
+                    if(ref.current) { ref.current.srcObject = stream; ref.current.play(); }
+                });
+            };
+
+            // --- MOVIMIENTO ---
+            const startMoving = (dx, dy) => {
+                if (moveInterval.current) return;
+                move(dx, dy);
+                moveInterval.current = setInterval(() => move(dx, dy), 50);
+            };
+
+            const stopMoving = () => {
+                if (moveInterval.current) { clearInterval(moveInterval.current); moveInterval.current = null; }
+            };
+
+            const move = (dx, dy) => {
+                setConfigs(prev => {
+                    const newConfigs = [...prev];
+                    const spd = moveSpeed === 1 ? 0.5 : 2; 
+                    newConfigs[selectedCam].x += dx * spd;
+                    newConfigs[selectedCam].y += dy * spd;
+                    return newConfigs;
+                });
+            };
+
+            const updateZoom = (val) => {
+                const newConfigs = [...configs];
+                newConfigs[selectedCam].scale = parseFloat(val);
+                setConfigs(newConfigs);
+            };
+
+            if (isFile) return <div className="protocol-warn"><h1 className="text-red-500 font-bold text-2xl">⚠️ ERROR</h1><p>Sube a Netlify Drop.</p></div>;
+
+            return (
+                <div 
+                    className={`w-full h-full ${cleanMode ? 'clean-mode' : 'edit-mode'}`}
+                    onDoubleClick={() => setCleanMode(!cleanMode)}
+                >
+                    
+                    {/* GRILLA DE VIDEO */}
+                    <div id="matrix-root">
+                        {configs.map((cfg, i) => (
+                            <div key={i} className={`cell ${!cleanMode && selectedCam===i ? 'selected' : ''}`} onClick={()=>setSelectedCam(i)}>
+                                <div style={{width:'100%', height:'100%', position:'relative', overflow:'hidden'}}>
+                                    <video 
+                                        ref={videoRefs[i]} 
+                                        className={`video-source ${boost ? 'hd-boost' : ''}`}
+                                        muted playsInline 
+                                        style={{
+                                            width: '100%', height: '100%',
+                                            transform: `translate(${cfg.x}%, ${cfg.y}%) scale(${cfg.scale/100})`
+                                        }}
+                                    />
+                                </div>
+                                <div className="cam-tag">{cfg.label}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* CONTROLES */}
+                    <div className={`controls-panel ${cleanMode ? 'hidden-ui' : ''}`}>
+                        
+                        {/* BOTÓN CERRAR PANEL (X) */}
+                        <div className="close-panel-btn" onClick={()=>setCleanMode(true)} title="Ocultar Panel">✕</div>
+
+                        <div className="text-center font-black text-lg text-blue-400 mb-2">
+                            STREAM<span className="text-white">SPLITTER</span> V25
+                        </div>
+                        
+                        <div className="flex gap-2 mb-2">
+                            <select className="flex-1 text-sm" onChange={e=>setSelectedDevice(e.target.value)} value={selectedDevice}>
+                                {devices.map(d=><option key={d.deviceId} value={d.deviceId}>{d.label || "Cámara"}</option>)}
+                            </select>
+                            <button className="bg-blue-600 text-white px-3 rounded font-bold text-xs" onClick={startCamera}>CONECTAR</button>
+                        </div>
+                        
+                        <button className="btn-atem" onClick={applyAtemPreset}>⚡ PRESET ATEM (HÍBRIDO)</button>
+
+                        <div className="bg-black/50 p-3 rounded-lg border border-gray-700 mt-2">
+                            <div className="text-center text-yellow-400 font-bold mb-2 text-sm uppercase">
+                                Ajustando: {configs[selectedCam].label}
+                            </div>
+                            
+                            <div className="flex gap-4 items-center">
+                                {/* PAD */}
+                                <div className="d-pad">
+                                    <div></div>
+                                    <button className="d-btn" onMouseDown={()=>startMoving(0, -1)} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={()=>startMoving(0, -1)} onTouchEnd={stopMoving}>⬆</button>
+                                    <div></div>
+                                    <button className="d-btn" onMouseDown={()=>startMoving(-1, 0)} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={()=>startMoving(-1, 0)} onTouchEnd={stopMoving}>⬅</button>
+                                    <div className="text-[9px] text-gray-500 text-center flex items-center justify-center font-bold">MOV</div>
+                                    <button className="d-btn" onMouseDown={()=>startMoving(1, 0)} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={()=>startMoving(1, 0)} onTouchEnd={stopMoving}>➡</button>
+                                    <div></div>
+                                    <button className="d-btn" onMouseDown={()=>startMoving(0, 1)} onMouseUp={stopMoving} onMouseLeave={stopMoving} onTouchStart={()=>startMoving(0, 1)} onTouchEnd={stopMoving}>⬇</button>
+                                    <div></div>
+                                </div>
+
+                                {/* ZOOM */}
+                                <div className="flex-1 space-y-3">
+                                    <div>
+                                        <div className="flex justify-between text-xs text-gray-400 font-bold mb-1">
+                                            <span>ZOOM DIGITAL</span> <span>{configs[selectedCam].scale}%</span>
+                                        </div>
+                                        <input type="range" min="100" max="600" value={configs[selectedCam].scale} onChange={e=>updateZoom(e.target.value)} />
+                                    </div>
+                                    
+                                    <div className="flex justify-between items-center bg-gray-800 p-1 rounded">
+                                        <span className="text-[10px] text-gray-400 ml-2">VELOCIDAD:</span>
+                                        <div className="flex gap-1">
+                                            <button className={`px-2 py-1 text-[10px] rounded ${moveSpeed===1?'bg-blue-600 text-white':'bg-gray-600'}`} onClick={()=>setMoveSpeed(1)}>LENTA</button>
+                                            <button className={`px-2 py-1 text-[10px] rounded ${moveSpeed===5?'bg-blue-600 text-white':'bg-gray-600'}`} onClick={()=>setMoveSpeed(5)}>RÁPIDA</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button className={`btn-boost ${boost ? 'active' : ''}`} onClick={()=>setBoost(!boost)}>
+                            {boost ? '✨ MEJORA VISUAL (HD) ACTIVADA' : '🔧 ACTIVAR MEJORA VISUAL'}
+                        </button>
+
+                        <button className="btn-clean mt-2" onClick={()=>setCleanMode(true)}>
+                            OCULTAR CONTROLES (AIRE)
+                        </button>
+                        
+                        <div className="text-[10px] text-gray-500 text-center mt-2">
+                            Presiona <b>ESC</b> o haz <b>Doble Clic</b> para volver.
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
