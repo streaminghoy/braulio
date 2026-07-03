@@ -106,7 +106,8 @@
     <div id="root"></div>
 
     <script>
-        window.addEventListener('load', function() {
+        // Verificación de CDN con retry
+        function checkLibraries() {
             const checks = {
                 'React': typeof React !== 'undefined',
                 'ReactDOM': typeof ReactDOM !== 'undefined',
@@ -121,10 +122,22 @@
                     '<span style="color:#ef4444;font-size:18px">ERROR: No cargaron:<br><b>' + missing.join(', ') + '</b></span>';
                 document.querySelector('.loader-spinner').style.borderTopColor = '#ef4444';
                 document.getElementById('loader-fallback').classList.remove('hidden');
-            } else {
-                document.getElementById('loader').classList.add('hidden');
+                return false;
             }
-        });
+            return true;
+        }
+
+        // Intentar verificar inmediatamente y también después de un delay
+        if (checkLibraries()) {
+            document.getElementById('loader').classList.add('hidden');
+        } else {
+            // Reintentar después de 2 segundos
+            setTimeout(function() {
+                if (checkLibraries()) {
+                    document.getElementById('loader').classList.add('hidden');
+                }
+            }, 2000);
+        }
     </script>
 
     <script type="text/babel">
@@ -193,6 +206,7 @@
             const [audioDevices, setAudioDevices] = useState([]);
             const [selectedAudio, setSelectedAudio] = useState('');
             const [talkbackActive, setTalkbackActive] = useState(false);
+            const [ifbError, setIfbError] = useState(null);
             const talkbackRef = useRef(false);
             const peer = useRef(null);
             const mqttClient = useRef(null);
@@ -207,25 +221,45 @@
                 });
                 const myId = `sc_dir_${roomName.toUpperCase()}`;
                 peer.current = new Peer(myId, PEER_CONFIG);
+                
                 peer.current.on('call', (call) => {
                     const match = call.peer.match(/_(\d+)$/);
                     if (match) {
                         const slotId = parseInt(match[1]);
                         if (slotId >= 1 && slotId <= 3) {
-                            call.answer(); 
+                            call.answer(returnStreamRef.current || undefined);
+                            
                             call.on('stream', (stream) => {
                                 setSlots(prev => ({ ...prev, [slotId]: { ...prev[slotId], connected: true, stream: stream } }));
+                                
                                 if (talkbackRef.current && returnStreamRef.current) {
-                                    setTimeout(() => { peer.current.call(`sc_guest_${roomName.toUpperCase()}_${slotId}`, returnStreamRef.current); }, 1500);
+                                    setTimeout(() => { 
+                                        const retCall = peer.current.call(`sc_guest_${roomName.toUpperCase()}_${slotId}`, returnStreamRef.current);
+                                        if (retCall) {
+                                            retCall.on('error', (err) => console.log('Error retorno a guest:', err));
+                                        }
+                                    }, 1500);
                                 }
                             });
                             call.on('close', () => {
                                 setSlots(prev => ({ ...prev, [slotId]: { ...prev[slotId], connected: false, stream: null } }));
                             });
+                            call.on('error', (err) => {
+                                console.log('Error en llamada director:', err);
+                            });
                         }
                     }
                 });
-                return () => { peer.current?.destroy(); mqttClient.current?.end(); };
+                
+                peer.current.on('error', (err) => {
+                    console.log('Peer error:', err);
+                });
+                
+                return () => { 
+                    peer.current?.destroy(); 
+                    mqttClient.current?.end(); 
+                    returnStreamRef.current?.getTracks().forEach(t => t.stop());
+                };
             }, [roomName]);
 
             const handleTally = (slotId, state) => {
@@ -234,29 +268,65 @@
             };
 
             const toggleReturnAll = async () => {
+                setIfbError(null);
+                
                 if (talkbackActive) {
                     returnStreamRef.current?.getTracks().forEach(t => t.stop());
+                    returnStreamRef.current = null;
                     setTalkbackActive(false);
                     talkbackRef.current = false;
                 } else {
                     try {
-                        const s = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: selectedAudio }, video: true });
+                        let constraints = { 
+                            audio: selectedAudio ? { deviceId: { exact: selectedAudio } } : true 
+                        };
+                        
+                        let s;
+                        try {
+                            s = await navigator.mediaDevices.getUserMedia(constraints);
+                        } catch (err) {
+                            if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') {
+                                s = await navigator.mediaDevices.getUserMedia({ audio: true });
+                            } else {
+                                throw err;
+                            }
+                        }
+                        
                         returnStreamRef.current = s;
                         setTalkbackActive(true);
                         talkbackRef.current = true;
+                        
                         let delay = 0;
                         [1, 2, 3].forEach(slotId => {
                             if (slots[slotId].connected) {
-                                setTimeout(() => { peer.current.call(`sc_guest_${roomName.toUpperCase()}_${slotId}`, s); }, delay);
+                                setTimeout(() => { 
+                                    const retCall = peer.current.call(`sc_guest_${roomName.toUpperCase()}_${slotId}`, s);
+                                    if (retCall) {
+                                        retCall.on('error', (err) => console.log('Error enviando retorno:', err));
+                                    }
+                                }, delay);
                                 delay += 300;
                             }
                         });
-                    } catch (e) { alert("Error retorno general"); }
+                    } catch (e) {
+                        console.error("Error IFB:", e);
+                        let msg = "Error al acceder al micrófono.";
+                        if (e.name === 'NotAllowedError') {
+                            msg = "Permiso denegado. Asegurate de permitir el micrófono en el navegador.";
+                        } else if (e.name === 'NotFoundError') {
+                            msg = "No se encontró micrófono. Conectá uno y recargá la página.";
+                        } else if (e.name === 'NotReadableError') {
+                            msg = "El micrófono está siendo usado por otra aplicación.";
+                        }
+                        setIfbError(msg);
+                        alert(msg);
+                    }
                 }
             };
 
             const copyLink = (mode, slotId) => {
-                const url = `${window.location.href.split('?')[0]}?mode=${mode}&room=${roomName}&slot=${slotId}`;
+                const baseUrl = window.location.origin + window.location.pathname;
+                const url = `${baseUrl}?mode=${mode}&room=${roomName}&slot=${slotId}`;
                 navigator.clipboard.writeText(url); 
                 alert(`Enlace de ${mode.toUpperCase()} (Móvil ${slotId}) copiado.`);
             };
@@ -277,6 +347,11 @@
                             </button>
                         </div>
                     </div>
+                    {ifbError && (
+                        <div style={{ background: '#ef4444', color: 'white', padding: '8px 20px', textAlign: 'center', fontWeight: 'bold', fontSize: '14px' }}>
+                            ⚠️ {ifbError}
+                        </div>
+                    )}
                     <div className="grid-container">
                         {[1, 2, 3].map(slotId => (
                             <div key={slotId} className={`slot-card ${slots[slotId].tally === 'live' ? 'border-red-500' : slots[slotId].tally === 'prev' ? 'border-green-500' : ''}`}>
@@ -327,6 +402,7 @@
                         if (!stream) {
                             const conn = peer.current.connect(guestId, { reliable: false });
                             conn.on('open', () => { conn.send('WAKE_UP_OBS'); setTimeout(() => conn.close(), 500); });
+                            conn.on('error', () => {});
                         }
                     }, 3000);
                 });
@@ -336,6 +412,7 @@
                     call.answer(); 
                     call.on('stream', (s) => { setStream(s); setStatus(''); });
                     call.on('close', () => { setStream(null); setStatus(`MÓVIL ${slotId} DESCONECTADO`); });
+                    call.on('error', (err) => { console.log('OBS call error:', err); });
                 });
                 peer.current.on('error', (err) => { setStatus(`ESPERANDO MÓVIL ${slotId}...`); });
                 return () => { if (pingInterval) clearInterval(pingInterval); peer.current?.destroy(); };
@@ -429,19 +506,24 @@
                                     peer.current.call(`sc_obs_${baseId}_${slotId}`, localStream.current);
                                 }
                             });
+                            conn.on('error', (err) => console.log('Guest conn error:', err));
                         });
                         peer.current.on('call', (c) => {
                             c.answer(); 
                             c.on('stream', (rem) => { setReturnStream(rem); });
+                            c.on('error', (err) => console.log('Guest retorno error:', err));
                         });
-                    } catch (e) { alert("Error al acceder a cámara/micrófono"); }
+                        peer.current.on('error', (err) => console.log('Guest peer error:', err));
+                    } catch (e) { 
+                        alert("Error al acceder a cámara/micrófono: " + (e.name || 'desconocido')); 
+                    }
                 };
                 init();
                 return () => { peer.current?.destroy(); mq.end(); };
             }, [joined]);
 
-            const toggleMic = () => { if (localStream.current) { const t = localStream.current.getAudioTracks()[0]; t.enabled = !t.enabled; setMicMuted(!t.enabled); } };
-            const toggleCam = () => { if (localStream.current) { const t = localStream.current.getVideoTracks()[0]; t.enabled = !t.enabled; setCamOff(!t.enabled); } };
+            const toggleMic = () => { if (localStream.current) { const t = localStream.current.getAudioTracks()[0]; if (t) { t.enabled = !t.enabled; setMicMuted(!t.enabled); } } };
+            const toggleCam = () => { if (localStream.current) { const t = localStream.current.getVideoTracks()[0]; if (t) { t.enabled = !t.enabled; setCamOff(!t.enabled); } } };
 
             if (!joined) return (
                 <div className="lobby-container"><div className="glass-box">
@@ -497,13 +579,27 @@
                     <div className="lobby-container"><div className="glass-box">
                         <h1 className="text-3xl font-black mb-6 uppercase text-blue-500 tracking-tighter">StreamCall PRO (3 CANALES)</h1>
                         <input value={appState.room} onChange={(e) => setAppState({...appState, room: e.target.value.toUpperCase()})} placeholder="NOMBRE SALA" />
-                        <button className="btn btn-blue w-full py-4 text-lg" onClick={() => window.location.href=`?mode=director&room=${appState.room}`}>ABRIR DASHBOARD DIRECTOR</button>
+                        <button className="btn btn-blue w-full py-4 text-lg" onClick={() => {
+                            const baseUrl = window.location.origin + window.location.pathname;
+                            window.location.href = `${baseUrl}?mode=director&room=${appState.room}`;
+                        }}>ABRIR DASHBOARD DIRECTOR</button>
                     </div></div>
                 );
             }
             return null;
         };
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+        
+        // Renderizar la app y ocultar el loader
+        try {
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<App />);
+            document.getElementById('loader').classList.add('hidden');
+        } catch (err) {
+            console.error('Error al renderizar:', err);
+            document.getElementById('loader-text').innerHTML = 
+                '<span style="color:#ef4444;font-size:18px">ERROR al iniciar la app:<br><b>' + err.message + '</b></span>';
+            document.querySelector('.loader-spinner').style.borderTopColor = '#ef4444';
+        }
     </script>
 </body>
 </html>
